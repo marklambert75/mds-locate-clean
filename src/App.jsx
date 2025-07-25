@@ -223,7 +223,7 @@ Just return the formatted sentence.
       </div>
 
       <div style={{ marginBottom: 20 }}>
-        <div style={{ margin: "4px 0 8px 0" }}>Select distance in feet</div>
+        <div style={{ margin: "4px 0 8px 0" }}>Select distance in feet (values cumulate)</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
           {[5, 10, 20, 50, 100].map((n) => (
             <button key={n} onClick={() => setDistanceTotal(distanceTotal + n)}>{n}</button>
@@ -232,7 +232,7 @@ Just return the formatted sentence.
         <div style={{ marginBottom: 8 }}>Total est distance: ~{distanceTotal} feet</div>
 
         <select value={directionFromLandmark} onChange={(e) => setDirectionFromLandmark(e.target.value)} className="input" style={{ marginBottom: 8 }}>
-          <option value="">Direction in relation to landmark</option>
+          <option value="">Direction from landmark</option>
           {["N", "NE", "E", "SE", "S", "SW", "W", "NW"].map((dir) => (
             <option key={dir} value={dir}>{dir}</option>
           ))}
