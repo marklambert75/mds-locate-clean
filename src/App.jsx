@@ -11,6 +11,7 @@ function App() {
   const [additionalComments, setAdditionalComments] = useState("");
   const [aiComments, setAiComments] = useState("");
   const [geoLocationComment, setGeoLocationComment] = useState("");
+  const [landmarkImage, setLandmarkImage] = useState(null);
 
   // === Location Builder State ===
   const [distanceTotal, setDistanceTotal] = useState(0);
@@ -76,6 +77,62 @@ Format example: "Excavator on site. Workers in high-vis. Pile of piping near tre
     }
   };
 
+const handleAnalyzeLandmarkImage = async () => {
+  if (!landmarkImage) return;
+
+  const messages = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `
+You are provided with a photo showing a single landmark such as a utility pole, sign, or gate marker.
+
+Your task is to:
+- Identify the type of object (e.g., utility pole, gate marker, sign)
+- Include any visible ID or label on it
+- Return both as a single short phrase
+
+Examples:
+- "Utility pole 79557B"
+- "Sign: No Trespassing"
+- "Gate marker 3A"
+
+Do not describe surroundings or speculate. Only report what is clearly visible on the object itself.
+`.trim(),
+
+        },
+        {
+          type: "image_url",
+          image_url: { url: landmarkImage },
+        },
+      ],
+    },
+  ];
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_OPENAI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages,
+      }),
+    });
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    if (content) setLandmark1(content.trim());
+  } catch (err) {
+    alert("Error analyzing image: " + err.message);
+  }
+};
+
+
 const handleGeoAnalyze = () => {
   if (!navigator.geolocation) {
     setLocationDesc("Geolocation not supported.");
@@ -91,20 +148,21 @@ const handleGeoAnalyze = () => {
 
       // Step 1: Ask OpenAI to reformat this into a clean field-style location description
       const prompt = `
-You are generating structured field location descriptions based on GPS data.
+You are generating short, clear field location descriptions based on GPS data.
 
-Use this raw address:
+Using the address below, return a short phrase describing the location. Prioritize:
+- Named places (e.g. parks, businesses, buildings)
+- Visible address numbers (e.g. 2023 S Crystal Way)
+- Corners or edges if the place is large (e.g. Ivy Green Park (N corner))
+
+Avoid guessing intersections unless they are the clearest visible reference.
+
+Only return the formatted sentence — no commentary or extra data.
+
+Address:
 "${displayName}"
+`.trim();
 
-Respond with a short, single-sentence description of the location using this format:
-- Use ~approximate distance in feet
-- Use a cardinal direction (N, NE, E, etc.)
-- Prefer intersections if they can be inferred
-- Example: "~50 feet NW of intersection of Main St and 3rd Ave"
-
-Do not include latitude/longitude or extra explanation.
-Just return the formatted sentence.
-      `.trim();
 
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -307,13 +365,29 @@ Just return the formatted sentence.
         )}
 
         {locationType === "landmark" && (
-          <input
-            placeholder="Enter landmark"
-            value={landmark1}
-            onChange={(e) => setLandmark1(e.target.value)}
-            className="input"
-          />
+          <>
+            <input
+              placeholder="Enter landmark"
+              value={landmark1}
+              onChange={(e) => setLandmark1(e.target.value)}
+              className="input"
+            />
+
+            <div style={{ marginTop: 10 }}>
+              <label>📷 Upload Landmark Photo</label><br />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleImageUpload(e, setLandmarkImage)}
+                className="input"
+              />
+              <button onClick={handleAnalyzeLandmarkImage} style={{ marginTop: 8 }}>
+                Analyze Landmark with AI
+              </button>
+            </div>
+          </>
         )}
+
         <div style={{ marginBottom: 10 }}>
           <button onClick={handleGeoAnalyze}>Analyze Location with AI (experimental)</button>
         </div>
