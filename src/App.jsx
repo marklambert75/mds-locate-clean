@@ -1,3 +1,4 @@
+// === SECTION 1: 
 import { useState, useEffect } from "react";
 
 function App() {
@@ -12,6 +13,48 @@ function App() {
   const [aiComments, setAiComments] = useState("");
   const [geoLocationComment, setGeoLocationComment] = useState("");
   const [landmarkImage, setLandmarkImage] = useState(null);
+
+    // === Phrase Manager State ===
+  const [savedPhrases, setSavedPhrases] = useState(() => {
+    const stored = localStorage.getItem("mds_phrases");
+    return stored ? JSON.parse(stored) : [];
+  });
+  const [selectedPhrases, setSelectedPhrases] = useState([]);
+  const [newPhraseTitle, setNewPhraseTitle] = useState("");
+  const [newPhraseContent, setNewPhraseContent] = useState("");
+  const [showPhraseManager, setShowPhraseManager] = useState(false);
+  const [phraseMode, setPhraseMode] = useState("add"); // "add" or "delete"
+
+
+  const addPhrase = () => {
+    if (!newPhraseTitle || !newPhraseContent) return;
+    setSavedPhrases([...savedPhrases, { title: newPhraseTitle, content: newPhraseContent }]);
+    setNewPhraseTitle("");
+    setNewPhraseContent("");
+  };
+
+  const removePhrase = (index) => {
+    setSavedPhrases(savedPhrases.filter((_, i) => i !== index));
+  };
+
+  const togglePhrase = (content) => {
+    setSelectedPhrases(prev =>
+      prev.includes(content) ? prev.filter(p => p !== content) : [...prev, content]
+    );
+  };
+
+  const editPhrase = (index, newTitle, newContent) => {
+    const updated = [...savedPhrases];
+    updated[index] = { title: newTitle, content: newContent };
+    setSavedPhrases(updated);
+  };
+
+  useEffect(() => {
+    localStorage.setItem("mds_phrases", JSON.stringify(savedPhrases));
+  }, [savedPhrases]);
+
+// === SECTION 2:
+
 
   // === Location Builder State ===
   const [distanceTotal, setDistanceTotal] = useState(0);
@@ -88,6 +131,8 @@ const handleRetrieveFromLocation = () => {
     }
   });
 };
+
+// === SECTION 3:
 
   const handleImageUpload = (e, setImage) => {
     const file = e.target.files[0];
@@ -198,6 +243,7 @@ Do not describe surroundings or speculate. Only report what is clearly visible o
   }
 };
 
+// === SECTION 4:
 
 const handleGeoAnalyze = () => {
   if (!navigator.geolocation) {
@@ -282,6 +328,7 @@ Address:
     setNotes("");
     setAdditionalComments("");
     setAiComments("");
+    setSelectedPhrases([]);
   };
 
   const copyToClipboard = (text) => navigator.clipboard.writeText(text);
@@ -308,6 +355,7 @@ Address:
     return locationDesc ? `${base}. ${locationDesc}` : base;
   };
 
+  // === SECTION 5:
 
   const buildAdditionalComments = () => {
     const parts = [];
@@ -316,11 +364,13 @@ Address:
     if (notes) parts.push(notes);
     if (aiComments) parts.push(aiComments);
     if (geoLocationComment) parts.push(geoLocationComment);
+    parts.push(...selectedPhrases); // include user-selected phrases at the end
     return parts
       .filter(Boolean)
       .map(str => str.trim().replace(/\.+$/, ""))
       .join(". ");
-  };
+};
+
 
   const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
   const weatherDescription = (value) => {
@@ -335,8 +385,9 @@ Address:
   };
 
   useEffect(() => {
-    setAdditionalComments(buildAdditionalComments());
-  }, [windDir, windIntensity, weather, notes, aiComments, geoLocationComment]);
+  setAdditionalComments(buildAdditionalComments());
+}, [windDir, windIntensity, weather, notes, aiComments, geoLocationComment, selectedPhrases]);
+
 
   return (
     <div className="container">
@@ -511,6 +562,99 @@ Address:
         </div>
       </div>
 
+{/* === SECTION 6:*/}
+
+{/* === Phrase Quick Add Dropdown (always visible) === */}
+<div style={{ marginTop: 16 }}>
+  <select
+    onChange={(e) => {
+      if (e.target.value) togglePhrase(e.target.value);
+      e.target.selectedIndex = 0;
+    }}
+    className="input"
+    style={{ marginBottom: 12 }}
+  >
+    <option value="">Select phrase to add</option>
+    {savedPhrases.map((p, i) => (
+      <option key={i} value={p.content}>{p.title}</option>
+    ))}
+  </select>
+</div>
+
+{/* === Phrase Manager Toggle Section === */}
+<div>
+  <button
+    onClick={() => setShowPhraseManager(p => !p)}
+    style={{ margin: "8px 0", fontSize: "0.9em" }}
+  >
+    {showPhraseManager ? "Hide Phrase Manager" : "Manage Phrases"}
+  </button>
+
+  {showPhraseManager && (
+    <div style={{ marginTop: 20, border: "1px solid #ccc", padding: 12 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button
+          onClick={() => setPhraseMode("add")}
+          style={{ backgroundColor: phraseMode === "add" ? "#ddd" : "#f0f0f0" }}
+        >
+          Add Phrase
+        </button>
+        <button
+          onClick={() => setPhraseMode("delete")}
+          style={{ backgroundColor: phraseMode === "delete" ? "#ddd" : "#f0f0f0" }}
+        >
+          Delete Phrase
+        </button>
+      </div>
+
+      {phraseMode === "add" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input
+            className="input"
+            placeholder="Phrase Title (e.g. 'Drift')"
+            value={newPhraseTitle}
+            onChange={(e) => setNewPhraseTitle(e.target.value)}
+          />
+          <textarea
+            className="input"
+            placeholder="Phrase Content"
+            value={newPhraseContent}
+            onChange={(e) => setNewPhraseContent(e.target.value)}
+          />
+          <button onClick={addPhrase}>Save New Phrase</button>
+        </div>
+      )}
+
+      {phraseMode === "delete" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <select
+            className="input"
+            value={newPhraseTitle}
+            onChange={(e) => setNewPhraseTitle(e.target.value)}
+          >
+            <option value="">Select phrase to delete</option>
+            {savedPhrases.map((p, i) => (
+              <option key={i} value={p.title}>{p.title}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const index = savedPhrases.findIndex(p => p.title === newPhraseTitle);
+              if (index !== -1) removePhrase(index);
+              setNewPhraseTitle("");
+            }}
+          >
+            Delete Selected Phrase
+          </button>
+        </div>
+      )}
+    </div>
+  )}
+</div>
+
+
+{/* === SECTION 7:*/}
+
       <textarea
         placeholder="Manual notes (e.g. 'crew is trenching 50 ft north of me')"
         value={notes}
@@ -527,6 +671,7 @@ Address:
       />
 
       <button onClick={clearCommentsFields}>Clear Comment Fields</button>
+
 
       <div className="section-header" style={{ background: "#333", color: "#fff", padding: "8px 12px", margin: "16px 0" }}>
         Final Data for MDS
