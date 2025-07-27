@@ -23,6 +23,72 @@ function App() {
   const [landmark2, setLandmark2] = useState("");
 
   // === Utility Functions ===
+  const handleAttachToLocation = () => {
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition((position) => {
+    const { latitude, longitude } = position.coords;
+    const stored = JSON.parse(localStorage.getItem("mds_locations") || "[]");
+    stored.push({
+      lat: latitude,
+      lon: longitude,
+      locationDesc: buildLocationDescription(),
+      additionalComments
+    });
+    localStorage.setItem("mds_locations", JSON.stringify(stored));
+    alert("Fields attached to current location.");
+  }, () => {
+    alert("Could not get location.");
+  });
+};
+
+const handleRetrieveFromLocation = () => {
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition((position) => {
+    const { latitude, longitude } = position.coords;
+    const stored = JSON.parse(localStorage.getItem("mds_locations") || "[]");
+    if (!stored.length) return alert("No stored locations found.");
+
+    const distance = (a, b) => {
+      const toRad = (x) => (x * Math.PI) / 180;
+      const R = 6371e3;
+      const φ1 = toRad(a.lat);
+      const φ2 = toRad(b.lat);
+      const Δφ = toRad(b.lat - a.lat);
+      const Δλ = toRad(b.lon - a.lon);
+      const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+      return R * c;
+    };
+
+    let closest = null;
+    let minDist = Infinity;
+
+    for (let entry of stored) {
+      const d = distance({ lat: latitude, lon: longitude }, entry);
+      if (d < minDist) {
+        minDist = d;
+        closest = entry;
+      }
+    }
+
+    if (minDist < 50 && closest) {
+      setLocationDesc(closest.locationDesc);
+      setAdditionalComments(closest.additionalComments);
+      alert("Fields retrieved from nearby location.");
+    } else {
+      alert("No nearby location found (within 50 meters).");
+    }
+  });
+};
+
   const handleImageUpload = (e, setImage) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -465,6 +531,15 @@ Address:
       <div className="section-header" style={{ background: "#333", color: "#fff", padding: "8px 12px", margin: "16px 0" }}>
         Final Data for MDS
       </div>
+      
+      <div style={{ marginBottom: 10 }}>
+  <button onClick={handleAttachToLocation} style={{ marginRight: 10 }}>
+    Attach Fields to Location
+  </button>
+  <button onClick={handleRetrieveFromLocation}>
+    Retrieve Fields at Location
+  </button>
+</div>
 
       <div style={{ marginTop: 10 }}>
         <label><strong>Location Description</strong></label>
