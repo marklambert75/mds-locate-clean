@@ -1,5 +1,8 @@
 // === SECTION 1: 
 import { useState, useEffect } from "react";
+import { db } from "./firebase";
+import { collection, getDocs, addDoc, deleteDoc, doc } from "firebase/firestore";
+
 
 function App() {
   // === State Management ===
@@ -14,27 +17,48 @@ function App() {
   const [geoLocationComment, setGeoLocationComment] = useState("");
   const [landmarkImage, setLandmarkImage] = useState(null);
 
-    // === Phrase Manager State ===
-  const [savedPhrases, setSavedPhrases] = useState(() => {
-    const stored = localStorage.getItem("mds_phrases");
-    return stored ? JSON.parse(stored) : [];
-  });
+  // === Phrase Manager State ===
+  const [savedPhrases, setSavedPhrases] = useState([]);
   const [selectedPhrases, setSelectedPhrases] = useState([]);
   const [newPhraseTitle, setNewPhraseTitle] = useState("");
   const [newPhraseContent, setNewPhraseContent] = useState("");
   const [showPhraseManager, setShowPhraseManager] = useState(false);
   const [phraseMode, setPhraseMode] = useState("add"); // "add" or "delete"
 
-
-  const addPhrase = () => {
-    if (!newPhraseTitle || !newPhraseContent) return;
-    setSavedPhrases([...savedPhrases, { title: newPhraseTitle, content: newPhraseContent }]);
-    setNewPhraseTitle("");
-    setNewPhraseContent("");
+  const loadPhrases = async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, "phrases"));
+      const phrases = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSavedPhrases(phrases);
+    } catch (err) {
+      console.error("Error loading phrases:", err);
+    }
   };
 
-  const removePhrase = (index) => {
-    setSavedPhrases(savedPhrases.filter((_, i) => i !== index));
+  const addPhrase = async () => {
+    if (!newPhraseTitle || !newPhraseContent) return;
+    try {
+      await addDoc(collection(db, "phrases"), {
+        title: newPhraseTitle,
+        content: newPhraseContent,
+      });
+      setNewPhraseTitle("");
+      setNewPhraseContent("");
+      loadPhrases();
+    } catch (err) {
+      console.error("Error adding phrase:", err);
+    }
+  };
+
+  const removePhrase = async (index) => {
+    const phraseToDelete = savedPhrases[index];
+    if (!phraseToDelete?.id) return;
+    try {
+      await deleteDoc(doc(db, "phrases", phraseToDelete.id));
+      loadPhrases();
+    } catch (err) {
+      console.error("Error deleting phrase:", err);
+    }
   };
 
   const togglePhrase = (content) => {
@@ -44,17 +68,15 @@ function App() {
   };
 
   const editPhrase = (index, newTitle, newContent) => {
-    const updated = [...savedPhrases];
-    updated[index] = { title: newTitle, content: newContent };
-    setSavedPhrases(updated);
+    // Optional: implement update if needed in future
   };
 
   useEffect(() => {
-    localStorage.setItem("mds_phrases", JSON.stringify(savedPhrases));
-  }, [savedPhrases]);
+    loadPhrases();
+  }, []);
+
 
 // === SECTION 2:
-
 
   // === Location Builder State ===
   const [distanceTotal, setDistanceTotal] = useState(0);
@@ -66,71 +88,82 @@ function App() {
   const [landmark2, setLandmark2] = useState("");
 
   // === Utility Functions ===
-  const handleAttachToLocation = () => {
-  if (!navigator.geolocation) {
-    alert("Geolocation not supported.");
-    return;
-  }
+  const handleAttachToLocation = async () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation not supported.");
+      return;
+    }
 
-  navigator.geolocation.getCurrentPosition((position) => {
-    const { latitude, longitude } = position.coords;
-    const stored = JSON.parse(localStorage.getItem("mds_locations") || "[]");
-    stored.push({
-      lat: latitude,
-      lon: longitude,
-      locationDesc: buildLocationDescription(),
-      additionalComments
-    });
-    localStorage.setItem("mds_locations", JSON.stringify(stored));
-    alert("Fields attached to current location.");
-  }, () => {
-    alert("Could not get location.");
-  });
-};
-
-const handleRetrieveFromLocation = () => {
-  if (!navigator.geolocation) {
-    alert("Geolocation not supported.");
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition((position) => {
-    const { latitude, longitude } = position.coords;
-    const stored = JSON.parse(localStorage.getItem("mds_locations") || "[]");
-    if (!stored.length) return alert("No stored locations found.");
-
-    const distance = (a, b) => {
-      const toRad = (x) => (x * Math.PI) / 180;
-      const R = 6371e3;
-      const φ1 = toRad(a.lat);
-      const φ2 = toRad(b.lat);
-      const Δφ = toRad(b.lat - a.lat);
-      const Δλ = toRad(b.lon - a.lon);
-      const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-      return R * c;
-    };
-
-    let closest = null;
-    let minDist = Infinity;
-
-    for (let entry of stored) {
-      const d = distance({ lat: latitude, lon: longitude }, entry);
-      if (d < minDist) {
-        minDist = d;
-        closest = entry;
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      try {
+        await addDoc(collection(db, "locations"), {
+          lat: latitude,
+          lon: longitude,
+          locationDesc: buildLocationDescription(),
+          additionalComments,
+          timestamp: Date.now()
+        });
+        alert("Fields attached to current location.");
+      } catch (err) {
+        console.error("Error saving location:", err);
+        alert("Failed to attach location.");
       }
+    }, () => {
+      alert("Could not get location.");
+    });
+  };
+
+  const handleRetrieveFromLocation = async () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation not supported.");
+      return;
     }
 
-    if (minDist < 50 && closest) {
-      setLocationDesc(closest.locationDesc);
-      setAdditionalComments(closest.additionalComments);
-      alert("Fields retrieved from nearby location.");
-    } else {
-      alert("No nearby location found (within 50 meters).");
-    }
-  });
-};
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      try {
+        const snapshot = await getDocs(collection(db, "locations"));
+        const entries = snapshot.docs.map(doc => doc.data());
+        if (!entries.length) return alert("No stored locations found.");
+
+        const distance = (a, b) => {
+          const toRad = (x) => (x * Math.PI) / 180;
+          const R = 6371e3;
+          const φ1 = toRad(a.lat);
+          const φ2 = toRad(b.lat);
+          const Δφ = toRad(b.lat - a.lat);
+          const Δλ = toRad(b.lon - a.lon);
+          const aVal = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+          const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+          return R * c;
+        };
+
+        let closest = null;
+        let minDist = Infinity;
+
+        for (let entry of entries) {
+          const d = distance({ lat: latitude, lon: longitude }, entry);
+          if (d < minDist) {
+            minDist = d;
+            closest = entry;
+          }
+        }
+
+        if (minDist < 50 && closest) {
+          setLocationDesc(closest.locationDesc);
+          setAdditionalComments(closest.additionalComments);
+          alert("Fields retrieved from nearby location.");
+        } else {
+          alert("No nearby location found (within 50 meters).");
+        }
+      } catch (err) {
+        console.error("Error retrieving locations:", err);
+        alert("Failed to retrieve location.");
+      }
+    });
+  };
+
 
 // === SECTION 3:
 
