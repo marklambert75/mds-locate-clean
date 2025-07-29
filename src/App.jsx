@@ -609,18 +609,27 @@ Address:
 
   const buildAdditionalComments = () => {
     const parts = [];
-    if (windIntensity && windDir)
+
+    // --- wind phrase logic ---
+    if (windIntensity === "no wind") {
+      parts.push("No wind");                       // ignore direction entirely
+    } else if (windIntensity && windDir) {
       parts.push(`${capitalize(windIntensity)} wind from ${windDir}`);
+    }
+
     if (weather) parts.push(weatherDescription(weather));
     if (notes) parts.push(notes);
     if (aiComments) parts.push(aiComments);
     if (geoLocationComment) parts.push(geoLocationComment);
+
     parts.push(...selectedPhrases);
+
     return parts
       .filter(Boolean)
       .map((str) => str.trim().replace(/\.+$/, ""))
       .join(". ");
   };
+
 
   useEffect(() => {
     setAdditionalComments(buildAdditionalComments());
@@ -848,6 +857,25 @@ Address:
 
             {/* Wind / weather */}
             <div style={{ display: "flex", gap: 10, margin: "12px 0" }}>
+              {/* --- Wind Intensity FIRST --- */}
+              <div>
+                <label>Wind Intensity</label>
+                <br />
+            <select
+              value={windIntensity}
+              onChange={(e) => setWindIntensity(e.target.value)}
+              className="input"
+            >
+              <option value="">--</option>            {/* ← placeholder restores blank default */}
+              {["no wind", "light", "moderate", "strong"].map((lvl) => (
+                <option key={lvl} value={lvl}>
+                  {lvl}
+                </option>
+              ))}
+            </select>
+              </div>
+
+              {/* --- Wind From second --- */}
               <div>
                 <label>Wind from</label>
                 <br />
@@ -855,6 +883,7 @@ Address:
                   value={windDir}
                   onChange={(e) => setWindDir(e.target.value)}
                   className="input"
+                  disabled={windIntensity === "no wind"}   // ← disables when “no wind” selected
                 >
                   <option value="">--</option>
                   {["N", "NE", "E", "SE", "S", "SW", "W", "NW"].map((dir) => (
@@ -865,23 +894,7 @@ Address:
                 </select>
               </div>
 
-              <div>
-                <label>Wind Intensity</label>
-                <br />
-                <select
-                  value={windIntensity}
-                  onChange={(e) => setWindIntensity(e.target.value)}
-                  className="input"
-                >
-                  <option value="">--</option>
-                  {["light", "moderate", "strong"].map((lvl) => (
-                    <option key={lvl} value={lvl}>
-                      {lvl}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
+              {/* --- Weather unchanged --- */}
               <div>
                 <label>Weather</label>
                 <br />
@@ -899,6 +912,8 @@ Address:
                 </select>
               </div>
             </div>
+
+
           </>
         )}
                 {/* ===== Guide Screen ===== */}
@@ -946,11 +961,14 @@ Address:
                     style={{ width: "100%", maxWidth: 400 }}
                   >
                     <option value="">Select a guide…</option>
-                    {guides.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.title}
-                      </option>
-                    ))}
+
+                    {[...guides]
+                      .sort((a, b) => a.title.localeCompare(b.title))
+                      .map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.title}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -1013,18 +1031,22 @@ Address:
               {/* --- Choose guide to edit --- */}
               {selectedGuideId === "" && (
                 <div style={{ marginBottom: 16 }}>
+
                   <select
                     className="input"
                     value={selectedGuideId}
                     onChange={(e) => setSelectedGuideId(e.target.value)}
                     style={{ width: "100%", maxWidth: 400 }}
                   >
-                    <option value="">Select a guide to edit…</option>
-                    {guides.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.title}
-                      </option>
-                    ))}
+                    <option value="">Select a guide…</option>
+
+                    {[...guides]
+                      .sort((a, b) => a.title.localeCompare(b.title))
+                      .map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.title}
+                        </option>
+                      ))}
                   </select>
                 </div>
               )}
@@ -1333,16 +1355,19 @@ Address:
                 <div style={{ marginBottom: 16 }}>
                   <select
                     className="input"
-                    value={selectedGuideToDeleteId}
-                    onChange={(e) => setSelectedGuideToDeleteId(e.target.value)}
+                    value={selectedGuideId}
+                    onChange={(e) => setSelectedGuideId(e.target.value)}
                     style={{ width: "100%", maxWidth: 400 }}
                   >
-                    <option value="">Select guide to delete…</option>
-                    {guides.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.title}
-                      </option>
-                    ))}
+                    <option value="">Select a guide…</option>
+
+                    {[...guides]
+                      .sort((a, b) => a.title.localeCompare(b.title))
+                      .map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.title}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -1381,12 +1406,14 @@ Address:
                 className="input"
                 style={{ marginBottom: 12 }}
               >
-                <option value="">Select phrase to add</option>
-                {savedPhrases.map((p, i) => (
+              <option value="">Select phrase to add</option>
+              {[...savedPhrases]
+                .sort((a, b) => a.title.localeCompare(b.title))
+                .map((p, i) => (
                   <option key={i} value={p.content}>
                     {p.title}
                   </option>
-                ))}
+              ))}
               </select>
             </div>
 
