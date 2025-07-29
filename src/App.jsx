@@ -6,9 +6,17 @@ import {
   getDocs,
   addDoc,
   deleteDoc,
-  updateDoc,   // ← new
+  updateDoc,
   doc,
 } from "firebase/firestore";
+
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+
+import { storage } from "./firebase";   // ← grabs the storage we just exported
 
 function App() {
   // === SECTION 02: State – Screen & Core Fields =============================
@@ -48,6 +56,10 @@ function App() {
   const [newEntryFieldName, setNewEntryFieldName] = useState("");
   const [newEntryFieldValue, setNewEntryFieldValue] = useState("");
   const [newEntryComment, setNewEntryComment] = useState("");
+  // temp fields while adding IMAGE items
+  const [newImageFile, setNewImageFile] = useState(null);
+  const [newImageCaption, setNewImageCaption] = useState("");
+
 
 
   // === SECTION 04: CRUD Helpers – Phrases ===================================
@@ -152,6 +164,21 @@ function App() {
     console.error("Error updating guide:", err);
   }
 };
+
+  /* --- Image upload helper (Firebase Storage) ---------------------- */
+  const uploadImage = async (file) => {
+    if (!file) return null;
+    try {
+      const imgRef = ref(storage, `guide-images/${Date.now()}-${file.name}`);
+      await uploadBytes(imgRef, file);
+      const url = await getDownloadURL(imgRef);
+      return url;                // caller will push this into builderItems
+    } catch (err) {
+      console.error("Error uploading image:", err);
+      alert("Image upload failed.");
+      return null;
+    }
+  };
 
 
   // === SECTION 05: Effect – Load Saved Phrases on Mount =====================
@@ -495,6 +522,21 @@ Address:
     setNewEntryComment("");
     setBuilderAddMode("");
   };
+  
+  const addImageItem = async () => {
+  if (!newImageFile) return;
+  const url = await uploadImage(newImageFile);
+  if (!url) return;          // upload failed
+  setBuilderItems((items) => [
+    ...items,
+    { type: "image", src: url, caption: newImageCaption.trim() },
+  ]);
+  // reset temp fields
+  setNewImageFile(null);
+  setNewImageCaption("");
+  setBuilderAddMode("");
+};
+
 
   const moveBuilderItem = (index, dir) => {
     setBuilderItems((items) => {
@@ -912,43 +954,57 @@ Address:
                   </select>
                 </div>
 
-                {/* --- Selected guide display --- */}
-                {(() => {
-                  const guide = guides.find((g) => g.id === selectedGuideId);
-                  if (!guide) return null;
-                  if (!guide.items?.length)
-                    return <p style={{ fontStyle: "italic" }}>Guide is empty.</p>;
+          {/* --- Selected guide display --- */}
+          {(() => {
+            const guide = guides.find((g) => g.id === selectedGuideId);
+            if (!guide) return null;
+            if (!guide.items?.length)
+              return <p style={{ fontStyle: "italic" }}>Guide is empty.</p>;
 
-                  return (
-                    <div style={{ border: "1px solid #ddd", padding: 12 }}>
-                      {guide.items.map((item, i) =>
-                        item.type === "section" ? (
-                          <h3 key={i} style={{ margin: "12px 0 6px" }}>
-                            {item.heading}
-                          </h3>
-                        ) : (
-                          <div
-                            key={i}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              margin: "4px 0",
-                            }}
-                          >
-                            <span style={{ flex: "1 1 auto" }}>
-                              <strong>{item.fieldName}</strong>: {item.fieldValue}
-                              {item.comment && ` — ${item.comment}`}
-                            </span>
-                            <button onClick={() => copyToClipboard(item.fieldValue)}>
-                              Copy
-                            </button>
-                          </div>
-                        )
+            return (
+              <div style={{ border: "1px solid #ddd", padding: 12 }}>
+                {guide.items.map((item, i) =>
+                  item.type === "section" ? (
+                    // ── Section heading ───────────────────────────────────────────
+                    <h3 key={i} style={{ margin: "12px 0 6px" }}>
+                      {item.heading}
+                    </h3>
+                  ) : item.type === "image" ? (
+                    // ── Image item ────────────────────────────────────────────────
+                    <div key={i} style={{ margin: "8px 0" }}>
+                      <img
+                        src={item.src}
+                        alt=""
+                        style={{ maxWidth: "100%", border: "1px solid #ccc" }}
+                      />
+                      {item.caption && (
+                        <div style={{ fontStyle: "italic" }}>{item.caption}</div>
                       )}
                     </div>
-                  );
-                })()}
+                  ) : (
+                    // ── Text entry item ───────────────────────────────────────────
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        margin: "4px 0",
+                      }}
+                    >
+                      <span style={{ flex: "1 1 auto" }}>
+                        <strong>{item.fieldName}</strong>: {item.fieldValue}
+                        {item.comment && ` — ${item.comment}`}
+                      </span>
+                      <button onClick={() => copyToClipboard(item.fieldValue)}>
+                        Copy
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
+            );
+          })()}
               </>
             )}
 
@@ -995,6 +1051,7 @@ Address:
                     <button onClick={() => setBuilderAddMode("entry")}>
                       Create Entry
                     </button>
+                    <button onClick={() => setBuilderAddMode("image")}>Create Image</button>
                   </div>
 
                   {/* ---- Conditional add forms (same as in Create mode) ---- */}
@@ -1044,6 +1101,29 @@ Address:
                     </div>
                   )}
 
+                  {builderAddMode === "image" && (
+                    <div style={{ marginBottom: 16, border: "1px solid #ccc", padding: 10 }}>
+                      <h4>New Image</h4>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setNewImageFile(e.target.files[0] || null)}
+                        className="input"
+                        style={{ marginBottom: 6 }}
+                      />
+                      <input
+                        className="input"
+                        placeholder="Caption (optional)"
+                        value={newImageCaption}
+                        onChange={(e) => setNewImageCaption(e.target.value)}
+                        style={{ marginBottom: 8 }}
+                      />
+                      <button onClick={addImageItem} disabled={!newImageFile}>
+                        Submit Image
+                      </button>
+                    </div>
+                  )}
+
                   {/* ---- Preview list with reorder arrows ---- */}
                   {builderItems.length > 0 && (
                     <div style={{ marginBottom: 20 }}>
@@ -1064,6 +1144,15 @@ Address:
 
                           {item.type === "section" ? (
                             <strong>{item.heading}</strong>
+                          ) : item.type === "image" ? (
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <img
+                                src={item.src}
+                                alt=""
+                                style={{ width: 60, height: 60, objectFit: "cover", border: "1px solid #ccc" }}
+                              />
+                              {item.caption && <em>{item.caption}</em>}
+                            </span>
                           ) : (
                             <span>
                               {item.fieldName}: {item.fieldValue}
@@ -1162,6 +1251,30 @@ Address:
                   </div>
                 )}
 
+                {builderAddMode === "image" && (
+                  <div style={{ marginBottom: 16, border: "1px solid #ccc", padding: 10 }}>
+                    <h4>New Image</h4>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setNewImageFile(e.target.files[0] || null)}
+                      className="input"
+                      style={{ marginBottom: 6 }}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Caption (optional)"
+                      value={newImageCaption}
+                      onChange={(e) => setNewImageCaption(e.target.value)}
+                      style={{ marginBottom: 8 }}
+                    />
+                    <button onClick={addImageItem} disabled={!newImageFile}>
+                      Submit Image
+                    </button>
+                  </div>
+                )}
+
+
                 {/* --- Preview list with reorder arrows --- */}
                 {builderItems.length > 0 && (
                   <div style={{ marginBottom: 20 }}>
@@ -1183,6 +1296,15 @@ Address:
                         {/* Content preview */}
                         {item.type === "section" ? (
                           <strong>{item.heading}</strong>
+                        ) : item.type === "image" ? (
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <img
+                              src={item.src}
+                              alt=""
+                              style={{ width: 60, height: 60, objectFit: "cover", border: "1px solid #ccc" }}
+                            />
+                            {item.caption && <em>{item.caption}</em>}
+                          </span>
                         ) : (
                           <span>
                             {item.fieldName}: {item.fieldValue}
@@ -1277,7 +1399,73 @@ Address:
 
               {showPhraseManager && (
                 <div style={{ marginTop: 20, border: "1px solid #ccc", padding: 12 }}>
-                  {/* …manager forms stay unchanged… */}
+                  {/* mode toggle */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                    <button
+                      onClick={() => setPhraseMode("add")}
+                      style={{
+                        backgroundColor: phraseMode === "add" ? "#ddd" : "#f0f0f0",
+                      }}
+                    >
+                      Add Phrase
+                    </button>
+                    <button
+                      onClick={() => setPhraseMode("delete")}
+                      style={{
+                        backgroundColor: phraseMode === "delete" ? "#ddd" : "#f0f0f0",
+                      }}
+                    >
+                      Delete Phrase
+                    </button>
+                  </div>
+
+                  {/* ---- Add form ---- */}
+                  {phraseMode === "add" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <input
+                        className="input"
+                        placeholder="Phrase Title"
+                        value={newPhraseTitle}
+                        onChange={(e) => setNewPhraseTitle(e.target.value)}
+                      />
+                      <textarea
+                        className="input"
+                        placeholder="Phrase Content"
+                        value={newPhraseContent}
+                        onChange={(e) => setNewPhraseContent(e.target.value)}
+                      />
+                      <button onClick={addPhrase}>Save New Phrase</button>
+                    </div>
+                  )}
+
+                  {/* ---- Delete form ---- */}
+                  {phraseMode === "delete" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <select
+                        className="input"
+                        value={newPhraseTitle}
+                        onChange={(e) => setNewPhraseTitle(e.target.value)}
+                      >
+                        <option value="">Select phrase to delete</option>
+                        {savedPhrases.map((p, i) => (
+                          <option key={i} value={p.title}>
+                            {p.title}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          const idx = savedPhrases.findIndex(
+                            (p) => p.title === newPhraseTitle
+                          );
+                          if (idx !== -1) removePhrase(idx);
+                          setNewPhraseTitle("");
+                        }}
+                      >
+                        Delete Selected Phrase
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
