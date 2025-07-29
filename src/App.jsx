@@ -1206,6 +1206,7 @@ Address:
                 <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
                   <button onClick={() => setBuilderAddMode("section")}>Create Section</button>
                   <button onClick={() => setBuilderAddMode("entry")}>Create Entry</button>
+                  <button onClick={() => setBuilderAddMode("image")}>Create Image</button>
                 </div>
 
                 {/* --- Conditional add forms --- */}
