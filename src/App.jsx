@@ -1800,10 +1800,9 @@ Address:
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {/* — Existing landmarks — */}
               {landmarks.map((lm) => (
-                <div
-                  key={lm.id}
-                  style={{ display: "flex", gap: 8, alignItems: "center" }}
-                >
+                <div key={lm.id} className="landmark-card">
+                  <div className="landmark-row">
+
                   <input
                     type="text"
                     className="input"
@@ -1816,10 +1815,11 @@ Address:
                         ...prev,
                         [lm.id]: {
                           ...prev[lm.id],
-                          description: e.target.value,
+                          description: e.target.value
                         },
                       }))
-                    }
+                    }      
+
                   />
                   <input
                     type="text"
@@ -1835,7 +1835,7 @@ Address:
                         ...prev,
                         [lm.id]: {
                           ...prev[lm.id],
-                          coords: e.target.value.replace(/['"]/g, ""),
+                          coords: e.target.value.replace(/['"()]/g, ""),
                         },
                       }))
                     }
@@ -1903,9 +1903,11 @@ Address:
                     Map
                   </a>
                 </div>
+              </div>
               ))}
 
               {/* — Add new landmark — */}
+              
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input
                   type="text"
@@ -1920,7 +1922,7 @@ Address:
                   placeholder="lat, lon"
                   value={newLandmarkCoords}
                   onChange={(e) =>
-                    setNewLandmarkCoords(e.target.value.replace(/['"]/g, ""))
+                    setNewLandmarkCoords(e.target.value.replace(/[\[\]()"']/g, ""))
                   }
                 />
                 <button

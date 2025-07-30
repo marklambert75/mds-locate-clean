@@ -56,3 +56,32 @@ button:hover {
     padding: 1rem;
   }
 }
+
+/* Landmarks card container */
+.landmark-card {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+/* Landmark inputs & buttons row */
+.landmark-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Stack vertically on narrow screens */
+@media (max-width: 600px) {
+  .landmark-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .landmark-row input,
+  .landmark-row button,
+  .landmark-row a {
+    width: 100%;
+  }
+}
