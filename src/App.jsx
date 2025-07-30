@@ -1807,7 +1807,7 @@ Address:
                   <input
                     type="text"
                     className="input"
-                    style={{ flex: 3, minWidth: 280 }}
+                    style={{ flex: 3, }}
                     value={
                       editLandmarks[lm.id]?.description ?? lm.description
                     }
