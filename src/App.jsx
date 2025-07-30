@@ -248,7 +248,9 @@ const formatDistance = (meters) => {
     const mi = feet / 5280;
     return `${mi.toFixed(1)} mi`;
   } else {
-    return `${Math.round(feet)} ft`;
+    // round *up* to next 10 ft
+    const rounded = Math.ceil(feet / 10) * 10;
+    return `${rounded} ft`;
   }
 };
 
@@ -279,7 +281,8 @@ const handleReportPosition = () => {
     const distStr = formatDistance(dist);
     setPositionReport(`${distStr} ${dir} of incident site`);
   },
-  (err) => alert("Unable to get your position: " + err.message)
+  (err) => alert("Unable to get your position: " + err.message),
+  { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
 );
 };
 
@@ -367,7 +370,8 @@ const autoDescribeNearest = () => {
       // Build the report string
       setNearestLandmarkReport(`~${distStr} ${dir} of ${best.description}`);
     },
-    (err) => alert("Unable to get your position: " + err.message)
+    (err) => alert("Unable to get your position: " + err.message),
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
   );
 };
 
