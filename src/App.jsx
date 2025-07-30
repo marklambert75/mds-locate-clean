@@ -8,6 +8,8 @@ import {
   deleteDoc,
   updateDoc,
   doc,
+  getDoc,
+  setDoc,
 } from "firebase/firestore";
 
 import {
@@ -32,6 +34,14 @@ function App() {
   const [aiComments, setAiComments] = useState("");
   const [geoLocationComment, setGeoLocationComment] = useState("");
   const [landmarkImage, setLandmarkImage] = useState(null);
+
+  // === Incident Site Coordinates ===
+  const [incidentLat, setIncidentLat] = useState("");
+  const [incidentLon, setIncidentLon] = useState("");
+
+  // === My Position Report String ===
+  const [positionReport, setPositionReport] = useState("");
+
 
   // === SECTION 03: State – Phrase Manager ==================================
   const [savedPhrases, setSavedPhrases] = useState([]);
@@ -104,6 +114,121 @@ function App() {
       prev.includes(content) ? prev.filter((p) => p !== content) : [...prev, content]
     );
   };
+
+  // === SECTION 04A: CRUD Helpers – Incident Site ============================
+
+  // Load the incident‐site coordinates from Firestore
+  const loadIncidentSite = async () => {
+    try {
+      const docRef = doc(db, "settings", "incidentSite");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const { lat, lon } = docSnap.data();
+        setIncidentLat(lat);
+        setIncidentLon(lon);
+      }
+    } catch (err) {
+      console.error("❌ loadIncidentSite error:", err);
+    }
+  };
+
+  // Save the incident‐site coordinates to Firestore
+  const saveIncidentSite = async () => {
+    try {
+      const docRef = doc(db, "settings", "incidentSite");
+      await setDoc(docRef, {
+        lat: incidentLat,
+        lon: incidentLon,
+      });
+      alert("Incident site saved.");
+    } catch (err) {
+      console.error("Error saving incident site:", err);
+      alert("Failed to save incident site.");
+    }
+  };
+
+// === SECTION 04B: Helpers – Distance, Bearing & Report =====================
+
+// Convert degrees → one of 16 compass points
+const bearingToCompass = (deg) => {
+  const points = [
+    "N","NNE","NE","ENE","E","ESE","SE","SSE",
+    "S","SSW","SW","WSW","W","WNW","NW","NNW"
+  ];
+  const idx = Math.floor(((deg + 11.25) % 360) / 22.5);
+  return points[idx];
+};
+
+// Haversine distance in meters
+const haversine = (lat1, lon1, lat2, lon2) => {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371000; // earth radius in m
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// Compute initial bearing from point A → B
+const computeBearing = (lat1, lon1, lat2, lon2) => {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const toDeg = (v) => (v * 180) / Math.PI;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2);
+  const Δλ = toRad(lon2 - lon1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) -
+    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+};
+
+// Round & format the distance, choose feet or miles
+const formatDistance = (meters) => {
+  const feet = meters * 3.28084;
+  if (feet >= 5280) {
+    const mi = feet / 5280;
+    return `${mi.toFixed(1)} mi`;
+  } else {
+    return `${Math.round(feet)} ft`;
+  }
+};
+
+// Get current GPS, compute & set report
+const handleReportPosition = () => {
+  if (!navigator.geolocation) {
+    return alert("Geolocation not supported.");
+  }
+  if (!incidentLat || !incidentLon) {
+    return alert("Please save an incident site first.");
+  }
+
+  navigator.geolocation.getCurrentPosition(
+  ({ coords }) => {
+    const curLat = coords.latitude;
+    const curLon = coords.longitude;
+
+    // Parse your saved strings into numbers
+    const targetLat = parseFloat(incidentLat);
+    const targetLon = parseFloat(incidentLon);
+    if (isNaN(targetLat) || isNaN(targetLon)) {
+      return alert("Invalid incident‐site coordinates.");
+    }
+
+    const dist = haversine(curLat, curLon, targetLat, targetLon);
+    const bear = computeBearing(curLat, curLon, targetLat, targetLon);
+    const dir = bearingToCompass(bear);
+    const distStr = formatDistance(dist);
+    setPositionReport(`${distStr} ${dir} of incident site`);
+  },
+  (err) => alert("Unable to get your position: " + err.message)
+);
+};
+
 
   /* --- Guide helpers ------------------------------------------------ */
   const loadGuides = async () => {
@@ -202,8 +327,18 @@ function App() {
       setBuilderTitle("");
       setBuilderItems([]);
     }
+
     setBuilderAddMode(""); // reset add-mode whenever selection changes
   }, [guideMode, selectedGuideId, guides]);
+
+
+    // === SECTION 05A: Effect – Load Incident Site on Mount ==================
+    useEffect(() => {
+      console.log("▶️ useEffect loadIncidentSite firing");
+      loadIncidentSite();
+    }, []);
+
+
 
   // === SECTION 06: State – Location Builder =================================
   const [distanceTotal, setDistanceTotal] = useState(0);
@@ -651,8 +786,8 @@ Address:
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <button onClick={() => setActiveScreen("main")}>Main</button>
           <button onClick={() => setActiveScreen("guide")}>Guide</button>
+          <button onClick={() => setActiveScreen("settings")}>Settings</button>
         </div>
-
         {activeScreen === "main" && (
           <>
             <h1>MDS Assist</h1>
@@ -818,8 +953,26 @@ Address:
                   Analyze Location with AI (experimental)
                 </button>
               </div>
+
+              <div style={{ marginBottom: 10 }}>
+                
+                {/* ——— Report My Position ——— */}
+                <div style={{ marginTop: 8 }}>
+                  <button onClick={handleReportPosition}>
+                    Location relative to incident site
+                  </button>
+                </div>
+               
+              </div>
+
+
+              {/* Build Location Description (plus incident‐site report) */}
               <textarea
-                value={buildLocationDescription()}
+                value={
+                  [ buildLocationDescription(), positionReport ]
+                    .filter(Boolean)
+                    .join(". ")
+                }
                 readOnly
                 className="input"
                 style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
@@ -971,6 +1124,8 @@ Address:
                       ))}
                   </select>
                 </div>
+
+
 
           {/* --- Selected guide display --- */}
           {(() => {
@@ -1393,6 +1548,50 @@ Address:
             )}
           </>
         )}
+
+        {activeScreen === "settings" && (
+          <>
+            <h1>Settings</h1>
+            <div
+              className="section-header"
+              style={{
+                background: "#333",
+                color: "#fff",
+                padding: "8px 12px",
+                margin: "16px 0",
+              }}
+            >
+              Incident Site
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <label>
+                <strong>Latitude</strong>
+              </label>
+              <input
+                type="text"
+                value={incidentLat}
+                onChange={(e) => setIncidentLat(e.target.value)}
+                className="input"
+              />
+
+              <label>
+                <strong>Longitude</strong>
+              </label>
+              <input
+                type="text"
+                value={incidentLon}
+                onChange={(e) => setIncidentLon(e.target.value)}
+                className="input"
+              />
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <button onClick={saveIncidentSite}>Save Incident Site</button>
+            </div>
+
+          </>
+        )}
+
 
         {activeScreen === "main" && (
           <>
