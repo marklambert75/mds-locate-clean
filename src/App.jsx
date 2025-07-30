@@ -363,7 +363,7 @@ const autoDescribeNearest = () => {
       if (!best) return;
 
       // Compute bearing & distance string
-      const bearing = computeBearing(curLat, curLon, best.lat, best.lon);
+      const bearing = computeBearing(best.lat, best.lon, curLat, curLon);
       const dir     = bearingToCompass(bearing);
       const distStr = formatDistance(minDist);
 
