@@ -61,13 +61,15 @@ function App() {
   const [newLandmarkCoords, setNewLandmarkCoords] = useState("");
   // free-form “lat, lon” for the “Add New” row
 
+  // — Instrument note injected into Additional Comments —
+  const [instrumentNote, setInstrumentNote] = useState("");   // e.g. “Batch number: 123…\nExp date: …”
+
 
   // === SECTION 03: State – Phrase Manager ==================================
   const [savedPhrases, setSavedPhrases] = useState([]);
   const [selectedPhrases, setSelectedPhrases] = useState([]);
   const [newPhraseTitle, setNewPhraseTitle] = useState("");
   const [newPhraseContent, setNewPhraseContent] = useState("");
-  const [showPhraseManager, setShowPhraseManager] = useState(false);
   const [phraseMode, setPhraseMode] = useState("add"); // "add" or "delete"
 
   // === Guide State ===================================================
@@ -374,6 +376,79 @@ const autoDescribeNearest = () => {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
   );
 };
+
+// === SECTION 04F: CRUD Helpers – Instruments =============================
+
+// ── State ----------------------------------------------------------------
+const [instruments, setInstruments] = useState([]);          // [{ id, abbr, barcode, batch, exp }]
+const [editInstruments, setEditInstruments] = useState({});  // temp edits keyed by id
+
+// temp inputs for the “add new” row
+const [newInstrAbbr,    setNewInstrAbbr]    = useState("");
+const [newInstrBarcode, setNewInstrBarcode] = useState("");
+const [newInstrBatch,   setNewInstrBatch]   = useState("");
+const [newInstrExp,     setNewInstrExp]     = useState("");
+
+// ── Load all --------------------------------------------------------------
+const loadInstruments = async () => {
+  try {
+    const snap = await getDocs(collection(db, "instruments"));
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setInstruments(list);
+  } catch (err) {
+    console.error("Error loading instruments:", err);
+  }
+};
+
+// ── Add new ---------------------------------------------------------------
+const addInstrument = async (abbr, barcode, batch, exp) => {
+  try {
+    await addDoc(collection(db, "instruments"), { abbr, barcode, batch, exp });
+    loadInstruments();
+  } catch (err) {
+    console.error("Error adding instrument:", err);
+  }
+};
+
+// ── Update existing -------------------------------------------------------
+const updateInstrument = async (id, abbr, barcode, batch, exp) => {
+  try {
+    await updateDoc(doc(db, "instruments", id), { abbr, barcode, batch, exp });
+    loadInstruments();
+  } catch (err) {
+    console.error("Error updating instrument:", err);
+  }
+};
+
+// ── Delete ---------------------------------------------------------------
+const deleteInstrument = async (id) => {
+  try {
+    await deleteDoc(doc(db, "instruments", id));
+    loadInstruments();
+  } catch (err) {
+    console.error("Error deleting instrument:", err);
+  }
+};
+
+// Copy barcode (single tap in Settings)
+const copyInstrumentBarcode = (code) => navigator.clipboard.writeText(code);
+
+// Build “Batch/QC … Exp date …” note for UR / Gtc buttons
+const makeInstrumentNote = (abbr) => {
+  const inst = instruments.find((i) => i.abbr === abbr);
+  if (!inst) return "";
+
+  // UR uses “Batch”; Gtc uses “QC”
+  const label = abbr === "UR" ? "Batch number" : "QC number";
+
+  return `${label}: ${inst.batch || ""}\nExp date: ${inst.exp || ""}`.trim();
+};
+
+// ── Effect – load once on mount -----------------------------------------
+useEffect(() => {
+  loadInstruments();
+}, []);
+
 
 
   /* --- Guide helpers ------------------------------------------------ */
@@ -819,6 +894,7 @@ Address:
     setAiComments("");
     setSelectedPhrases([]);
     setWindRelative("");
+    setInstrumentNote("");
   };
 
   const copyToClipboard = (text) => navigator.clipboard.writeText(text);
@@ -935,12 +1011,17 @@ Address:
     }
   };
 
+  // === SECTION 11: Helpers – Weather & Additional-Comments Builder ==========
   const buildAdditionalComments = () => {
+    /* ---------- 1. instrument block becomes its own line ---------- */
+    const firstLine = instrumentNote ? instrumentNote.trim() : "";
+
+    /* ---------- 2. everything else stays on one period-separated line ---------- */
     const parts = [];
 
     // --- wind phrase logic ---
     if (windIntensity === "no wind") {
-      parts.push("No wind");                       // ignore direction entirely
+      parts.push("No wind");
     } else if (windIntensity && windDir) {
       parts.push(`${capitalize(windIntensity)} wind from ${windDir}`);
     }
@@ -954,12 +1035,15 @@ Address:
 
     if (windRelative) parts.push(windRelative);
 
-    return parts
+    /* ---------- 3. build final string ---------- */
+    const trailingLine = parts
       .filter(Boolean)
       .map((str) => str.trim().replace(/\.+$/, ""))
       .join(". ");
-  };
 
+    // If there’s no instrument line, just return the trailing line
+    return [firstLine, trailingLine].filter(Boolean).join("\n");
+  };
 
   useEffect(() => {
     setAdditionalComments(buildAdditionalComments());
@@ -971,7 +1055,8 @@ Address:
     aiComments,
     geoLocationComment,
     selectedPhrases,
-    windRelative
+    windRelative,
+    instrumentNote
   ]);
 
   // === SECTION 12: RENDER ===================================================
@@ -1949,113 +2034,269 @@ Address:
             </div>
             {/* ==== end Landmarks Section ==== */}
 
+            {/* ==== SECTION: Instruments ==== */}
+            <div
+              className="section-header"
+              style={{
+                background: "#333",
+                color: "#fff",
+                padding: "8px 12px",
+                margin: "16px 0",
+              }}
+            >
+              Instruments
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* — Existing instruments — */}
+              {instruments.map((ins) => (
+               
+            <div key={ins.id} className="instrument-card">
+              {/* --- Row 1: Abbr + Barcode ----------------------------------- */}
+              <div className="instr-row">
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  value={editInstruments[ins.id]?.abbr ?? ins.abbr}
+                  onChange={(e) =>
+                    setEditInstruments((p) => ({
+                      ...p,
+                      [ins.id]: { ...p[ins.id], abbr: e.target.value },
+                    }))
+                  }
+                />
+                <input
+                  className="input"
+                  style={{ flex: 2 }}
+                  value={editInstruments[ins.id]?.barcode ?? ins.barcode}
+                  onChange={(e) =>
+                    setEditInstruments((p) => ({
+                      ...p,
+                      [ins.id]: { ...p[ins.id], barcode: e.target.value },
+                    }))
+                  }
+                />
+              </div>
+
+              {/* --- Row 2: Batch/QC + Exp date ------------------------------ */}
+              <div className="instr-row">
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="Batch / QC"
+                  value={editInstruments[ins.id]?.batch ?? ins.batch}
+                  onChange={(e) =>
+                    setEditInstruments((p) => ({
+                      ...p,
+                      [ins.id]: { ...p[ins.id], batch: e.target.value },
+                    }))
+                  }
+                />
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="Exp date"
+                  value={editInstruments[ins.id]?.exp ?? ins.exp}
+                  onChange={(e) =>
+                    setEditInstruments((p) => ({
+                      ...p,
+                      [ins.id]: { ...p[ins.id], exp: e.target.value },
+                    }))
+                  }
+                />
+              </div>
+
+              {/* --- Row 3: Action buttons ----------------------------------- */}
+              <div className="instr-row actions">
+                <button onClick={() => copyInstrumentBarcode(ins.barcode)}>Copy</button>
+                <button
+                  onClick={() => {
+                    const buf = editInstruments[ins.id] || {};
+                    updateInstrument(
+                      ins.id,
+                      buf.abbr ?? ins.abbr,
+                      buf.barcode ?? ins.barcode,
+                      buf.batch ?? ins.batch,
+                      buf.exp ?? ins.exp
+                    );
+                  }}
+                  style={{ background: "#3182ce", color: "#fff" }}
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => deleteInstrument(ins.id)}
+                  style={{ background: "#e53e3e", color: "#fff" }}
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+                          ))}
+
+            {/* — Add new instrument — */}
+            <hr className="landmark-divider" />
+
+            <div className="instrument-card">
+              {/* Row 1: abbreviation + barcode */}
+              <div className="instr-row">
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="Abbr (UR, MR, AR, Gtc)"
+                  value={newInstrAbbr}
+                  onChange={(e) => setNewInstrAbbr(e.target.value)}
+                />
+                <input
+                  className="input"
+                  style={{ flex: 2 }}
+                  placeholder="Barcode"
+                  value={newInstrBarcode}
+                  onChange={(e) => setNewInstrBarcode(e.target.value)}
+                />
+              </div>
+
+              {/* Row 2: batch/QC + exp date */}
+              <div className="instr-row">
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="Batch / QC"
+                  value={newInstrBatch}
+                  onChange={(e) => setNewInstrBatch(e.target.value)}
+                />
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder="Exp date"
+                  value={newInstrExp}
+                  onChange={(e) => setNewInstrExp(e.target.value)}
+                />
+              </div>
+
+              {/* Row 3: Add button */}
+              <div className="instr-row actions">
+                <button
+                  onClick={() => {
+                    addInstrument(newInstrAbbr, newInstrBarcode, newInstrBatch, newInstrExp);
+                    setNewInstrAbbr("");
+                    setNewInstrBarcode("");
+                    setNewInstrBatch("");
+                    setNewInstrExp("");
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+            </div>
+
+
+
+            {/* ==== SECTION: Situation Assessment ==== */}
+            <div
+              className="section-header"
+              style={{
+                background: "#333",
+                color: "#fff",
+                padding: "8px 12px",
+                margin: "16px 0",
+              }}
+            >
+              Situation Assessment
+            </div>
+
+            {/* --- Mode toggle --- */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <button
+                onClick={() => setPhraseMode("add")}
+                style={{ backgroundColor: phraseMode === "add" ? "#ddd" : "#f0f0f0" }}
+              >
+                Add Phrase
+              </button>
+              <button
+                onClick={() => setPhraseMode("delete")}
+                style={{ backgroundColor: phraseMode === "delete" ? "#ddd" : "#f0f0f0" }}
+              >
+                Delete Phrase
+              </button>
+            </div>
+
+            {/* --- Add form --- */}
+            {phraseMode === "add" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <input
+                  className="input"
+                  placeholder="Phrase Title"
+                  value={newPhraseTitle}
+                  onChange={(e) => setNewPhraseTitle(e.target.value)}
+                />
+                <textarea
+                  className="input"
+                  placeholder="Phrase Content"
+                  value={newPhraseContent}
+                  onChange={(e) => setNewPhraseContent(e.target.value)}
+                />
+                <button onClick={addPhrase}>Save New Phrase</button>
+              </div>
+            )}
+
+            {/* --- Delete form --- */}
+            {phraseMode === "delete" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <select
+                  className="input"
+                  value={newPhraseTitle}
+                  onChange={(e) => setNewPhraseTitle(e.target.value)}
+                >
+                  <option value="">Select phrase to delete</option>
+                  {savedPhrases.map((p) => (
+                    <option key={p.id} value={p.title}>
+                      {p.title}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => {
+                    const idx = savedPhrases.findIndex((p) => p.title === newPhraseTitle);
+                    if (idx !== -1) removePhrase(idx);
+                    setNewPhraseTitle("");
+                  }}
+                >
+                  Delete Selected Phrase
+                </button>
+              </div>
+            )}
+
+
           </>
         )}
 
 
         {activeScreen === "main" && (
           <>
-            {/* ===== SECTION 12B: Phrase Quick-Add & Manager ===== */}
-            <div style={{ marginTop: 16 }}>
-              <select
-                onChange={(e) => {
-                  if (e.target.value) togglePhrase(e.target.value);
-                  e.target.selectedIndex = 0;
-                }}
-                className="input"
-                style={{ marginBottom: 12 }}
-              >
-              <option value="">Select phrase to add</option>
-              {[...savedPhrases]
-                .sort((a, b) => a.title.localeCompare(b.title))
-                .map((p, i) => (
-                  <option key={i} value={p.content}>
-                    {p.title}
-                  </option>
+
+        {/* ===== SECTION 12B: Phrase Quick-Add ===== */}
+        <div style={{ marginTop: 16 }}>
+          <select
+            onChange={(e) => {
+              if (e.target.value) togglePhrase(e.target.value);
+              e.target.selectedIndex = 0;
+            }}
+            className="input"
+            style={{ marginBottom: 12 }}
+          >
+            <option value="">Select phrase to add</option>
+            {[...savedPhrases]
+              .sort((a, b) => a.title.localeCompare(b.title))
+              .map((p) => (
+                <option key={p.id} value={p.content}>
+                  {p.title}
+                </option>
               ))}
-              </select>
-            </div>
-
-            <div>
-              <button
-                onClick={() => setShowPhraseManager((p) => !p)}
-                style={{ margin: "8px 0", fontSize: "0.9em" }}
-              >
-                {showPhraseManager ? "Hide Phrase Manager" : "Manage Phrases"}
-              </button>
-
-              {showPhraseManager && (
-                <div style={{ marginTop: 20, border: "1px solid #ccc", padding: 12 }}>
-                  {/* mode toggle */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                    <button
-                      onClick={() => setPhraseMode("add")}
-                      style={{
-                        backgroundColor: phraseMode === "add" ? "#ddd" : "#f0f0f0",
-                      }}
-                    >
-                      Add Phrase
-                    </button>
-                    <button
-                      onClick={() => setPhraseMode("delete")}
-                      style={{
-                        backgroundColor: phraseMode === "delete" ? "#ddd" : "#f0f0f0",
-                      }}
-                    >
-                      Delete Phrase
-                    </button>
-                  </div>
-
-                  {/* ---- Add form ---- */}
-                  {phraseMode === "add" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <input
-                        className="input"
-                        placeholder="Phrase Title"
-                        value={newPhraseTitle}
-                        onChange={(e) => setNewPhraseTitle(e.target.value)}
-                      />
-                      <textarea
-                        className="input"
-                        placeholder="Phrase Content"
-                        value={newPhraseContent}
-                        onChange={(e) => setNewPhraseContent(e.target.value)}
-                      />
-                      <button onClick={addPhrase}>Save New Phrase</button>
-                    </div>
-                  )}
-
-                  {/* ---- Delete form ---- */}
-                  {phraseMode === "delete" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <select
-                        className="input"
-                        value={newPhraseTitle}
-                        onChange={(e) => setNewPhraseTitle(e.target.value)}
-                      >
-                        <option value="">Select phrase to delete</option>
-                        {savedPhrases.map((p, i) => (
-                          <option key={i} value={p.title}>
-                            {p.title}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => {
-                          const idx = savedPhrases.findIndex(
-                            (p) => p.title === newPhraseTitle
-                          );
-                          if (idx !== -1) removePhrase(idx);
-                          setNewPhraseTitle("");
-                        }}
-                      >
-                        Delete Selected Phrase
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+          </select>
+        </div>
+          
           </>
         )}
 
@@ -2070,6 +2311,12 @@ Address:
               className="input"
               style={{ height: 100 }}
             />
+
+          {/* Instrument note buttons */}
+          <div style={{ display: "flex", gap: 8, margin: "8px 0" }}>
+            <button onClick={() => setInstrumentNote(makeInstrumentNote("UR"))}>UR</button>
+            <button onClick={() => setInstrumentNote(makeInstrumentNote("Gtc"))}>Gastec</button>
+          </div>
 
             <textarea
               value={additionalComments}

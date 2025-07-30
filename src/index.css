@@ -98,3 +98,23 @@ button:hover {
 .landmark-add-row input {
   flex: 1 1 100%;
 }
+
+/* Instrument cards stack nicely on phones */
+.instrument-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+/* Each row lines up its items and can wrap */
+.instr-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Buttons row aligns left and adds a little gap for touch targets */
+.instr-row.actions button {
+  margin-right: 6px;
+}
