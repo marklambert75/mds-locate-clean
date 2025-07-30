@@ -154,8 +154,8 @@ function App() {
   // When lat/lon arrive, populate the single‐field input (stripping stray quotes)
   useEffect(() => {
     if (incidentLat !== "" && incidentLon !== "") {
-      const cleanLat = incidentLat.replace(/['"]/g, "");
-      const cleanLon = incidentLon.replace(/['"]/g, "");
+      const cleanLat = String(incidentLat).replace(/['"]/g, "");
+      const cleanLon = String(incidentLon).replace(/['"]/g, "");
       setIncidentCoords(`${cleanLat}, ${cleanLon}`);
     }
   }, [incidentLat, incidentLon]);
@@ -1910,9 +1910,10 @@ Address:
               </div>
               ))}
 
+              <hr className="landmark-divider" />
               {/* — Add new landmark — */}
               
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div className="landmark-add-row" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>                 
                 <input
                   type="text"
                   className="input"

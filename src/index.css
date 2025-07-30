@@ -85,3 +85,16 @@ button:hover {
     width: 100%;
   }
 }
+
+/* Landmarks – separator line */
+.landmark-divider {
+  width: 100%;
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 16px 0;
+}
+
+/* Landmarks – make inputs grow to full line when wrapping */
+.landmark-add-row input {
+  flex: 1 1 100%;
+}
