@@ -34,6 +34,8 @@ function App() {
   const [aiComments, setAiComments] = useState("");
   const [geoLocationComment, setGeoLocationComment] = useState("");
   const [landmarkImage, setLandmarkImage] = useState(null);
+  const [windRelative, setWindRelative] = useState("");
+
 
   // === Incident Site Coordinates ===
   const [incidentLat, setIncidentLat] = useState("");
@@ -227,6 +229,56 @@ const handleReportPosition = () => {
   },
   (err) => alert("Unable to get your position: " + err.message)
 );
+};
+
+// === SECTION 04C: Helpers – Wind ↔ Incident Site ===========================
+
+// Smallest angle difference (0-180 deg)
+const angleDiff = (a, b) => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
+
+const handleWindRelative = () => {
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported."); return;
+  }
+  if (!incidentLat || !incidentLon) {
+    alert("Please save an incident site first."); return;
+  }
+  if (!windDir) {
+    alert("Please select ‘Wind from’ first."); return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      const curLat = coords.latitude;
+      const curLon = coords.longitude;
+
+      const tLat = parseFloat(incidentLat);
+      const tLon = parseFloat(incidentLon);
+      if (isNaN(tLat) || isNaN(tLon)) {
+        alert("Invalid incident-site coordinates."); return;
+      }
+
+      const meters  = haversine(tLat, tLon, curLat, curLon);
+      const bearing = computeBearing(tLat, tLon, curLat, curLon);
+      const dir     = bearingToCompass(bearing);
+      const distStr = `~${formatDistance(meters)}`;
+
+      // wind bearings
+      const map = { N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315 };
+      const windFrom = map[windDir];
+      const downwind = (windFrom + 180) % 360;
+
+      let rel = "crosswind";
+      if (angleDiff(bearing, windFrom) <= 22.5) rel = "upwind";
+      else if (angleDiff(bearing, downwind) <= 22.5) rel = "downwind";
+
+      setWindRelative(`${distStr} ${dir} and ${rel} of incident site`);
+    },
+    (err) => alert("Unable to get your location: " + err.message)
+  );
 };
 
 
@@ -626,6 +678,7 @@ Address:
     setAdditionalComments("");
     setAiComments("");
     setSelectedPhrases([]);
+    setWindRelative("");
   };
 
   const copyToClipboard = (text) => navigator.clipboard.writeText(text);
@@ -759,6 +812,8 @@ Address:
 
     parts.push(...selectedPhrases);
 
+    if (windRelative) parts.push(windRelative);
+
     return parts
       .filter(Boolean)
       .map((str) => str.trim().replace(/\.+$/, ""))
@@ -776,6 +831,7 @@ Address:
     aiComments,
     geoLocationComment,
     selectedPhrases,
+    windRelative
   ]);
 
   // === SECTION 12: RENDER ===================================================
@@ -954,17 +1010,6 @@ Address:
                 </button>
               </div>
 
-              <div style={{ marginBottom: 10 }}>
-                
-                {/* ——— Report My Position ——— */}
-                <div style={{ marginTop: 8 }}>
-                  <button onClick={handleReportPosition}>
-                    Location relative to incident site
-                  </button>
-                </div>
-               
-              </div>
-
 
               {/* Build Location Description (plus incident‐site report) */}
               <textarea
@@ -1019,7 +1064,7 @@ Address:
               onChange={(e) => setWindIntensity(e.target.value)}
               className="input"
             >
-              <option value="">--</option>            {/* ← placeholder restores blank default */}
+              <option value="">--</option>
               {["no wind", "light", "moderate", "strong"].map((lvl) => (
                 <option key={lvl} value={lvl}>
                   {lvl}
@@ -1027,6 +1072,7 @@ Address:
               ))}
             </select>
               </div>
+
 
               {/* --- Wind From second --- */}
               <div>
@@ -1036,7 +1082,7 @@ Address:
                   value={windDir}
                   onChange={(e) => setWindDir(e.target.value)}
                   className="input"
-                  disabled={windIntensity === "no wind"}   // ← disables when “no wind” selected
+                  disabled={windIntensity === "no wind"}   
                 >
                   <option value="">--</option>
                   {["N", "NE", "E", "SE", "S", "SW", "W", "NW"].map((dir) => (
@@ -1064,11 +1110,20 @@ Address:
                   ))}
                 </select>
               </div>
+            </div>  
+
+            {/* ——— Wind » Incident site ——— */}
+            <div style={{ marginTop: 8, marginBottom: 12 }}>
+              <button onClick={handleWindRelative}>
+                Wind » Incident site
+              </button>
             </div>
 
+          </>  
+        )}   
 
-          </>
-        )}
+
+
                 {/* ===== Guide Screen ===== */}
         {activeScreen === "guide" && (
           <>
