@@ -41,8 +41,25 @@ function App() {
   const [incidentLat, setIncidentLat] = useState("");
   const [incidentLon, setIncidentLon] = useState("");
 
+  // === Incident Site Combined Input ===
+  const [incidentCoords, setIncidentCoords] = useState("");
+
   // === My Position Report String ===
   const [positionReport, setPositionReport] = useState("");
+
+  // === Landmarks List ===
+  const [landmarks, setLandmarks] = useState([]); // [{ id, description, lat, lon }, …]
+  const [nearestLandmarkReport, setNearestLandmarkReport] = useState("");
+  
+  // === Landmarks Edit Buffers & New-Landmark Inputs =======================
+  const [editLandmarks, setEditLandmarks] = useState({}); 
+  // holds per-landmark { description, coords } overrides
+
+  const [newLandmarkDesc, setNewLandmarkDesc] = useState("");
+  // free-form description for the “Add New” row
+
+  const [newLandmarkCoords, setNewLandmarkCoords] = useState("");
+  // free-form “lat, lon” for the “Add New” row
 
 
   // === SECTION 03: State – Phrase Manager ==================================
@@ -134,6 +151,15 @@ function App() {
     }
   };
 
+  // When lat/lon arrive, populate the single‐field input (stripping stray quotes)
+  useEffect(() => {
+    if (incidentLat !== "" && incidentLon !== "") {
+      const cleanLat = incidentLat.replace(/['"]/g, "");
+      const cleanLon = incidentLon.replace(/['"]/g, "");
+      setIncidentCoords(`${cleanLat}, ${cleanLon}`);
+    }
+  }, [incidentLat, incidentLon]);
+
   // Save the incident‐site coordinates to Firestore
   const saveIncidentSite = async () => {
     try {
@@ -148,6 +174,32 @@ function App() {
       alert("Failed to save incident site.");
     }
   };
+
+  // === SECTION 04A-2: Helpers – Save Combined Incident Coords ============
+  const handleSaveIncidentCoords = async () => {
+    // split at comma
+    const parts = incidentCoords.split(",");
+    if (parts.length !== 2) {
+      return alert("Enter both lat and lon, separated by a comma.");
+    }
+    const lat = parseFloat(parts[0].trim());
+    const lon = parseFloat(parts[1].trim());
+    if (isNaN(lat) || isNaN(lon)) {
+      return alert("Invalid format. Example: 43.5844120, -116.1939362");
+    }
+
+    try {
+      const docRef = doc(db, "settings", "incidentSite");
+      await setDoc(docRef, { lat, lon });
+      setIncidentLat(lat);
+      setIncidentLon(lon);
+      alert("Incident site saved.");
+    } catch (err) {
+      console.error("Error saving incident site:", err);
+      alert("Failed to save incident site.");
+    }
+  };
+
 
 // === SECTION 04B: Helpers – Distance, Bearing & Report =====================
 
@@ -281,6 +333,44 @@ const handleWindRelative = () => {
   );
 };
 
+// === SECTION 04E: Helpers – Auto‐Describe Nearest Landmark =============
+const autoDescribeNearest = () => {
+  if (!navigator.geolocation) {
+    return alert("Geolocation not supported.");
+  }
+  if (!landmarks.length) {
+    return alert("No landmarks defined.");
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      const { latitude: curLat, longitude: curLon } = coords;
+
+      // Find closest landmark
+      let best = null;
+      let minDist = Infinity;
+      landmarks.forEach((lm) => {
+        const d = haversine(curLat, curLon, lm.lat, lm.lon);
+        if (d < minDist) {
+          minDist = d;
+          best = lm;
+        }
+      });
+
+      if (!best) return;
+
+      // Compute bearing & distance string
+      const bearing = computeBearing(curLat, curLon, best.lat, best.lon);
+      const dir     = bearingToCompass(bearing);
+      const distStr = formatDistance(minDist);
+
+      // Build the report string
+      setNearestLandmarkReport(`~${distStr} ${dir} of ${best.description}`);
+    },
+    (err) => alert("Unable to get your position: " + err.message)
+  );
+};
+
 
   /* --- Guide helpers ------------------------------------------------ */
   const loadGuides = async () => {
@@ -357,6 +447,47 @@ const handleWindRelative = () => {
     }
   };
 
+  // === SECTION 04D: CRUD Helpers – Landmarks =============================
+
+  const loadLandmarks = async () => {
+    try {
+      const snap = await getDocs(collection(db, "landmarks"));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setLandmarks(list);
+    } catch (err) {
+      console.error("Error loading landmarks:", err);
+    }
+  };  
+
+  // Add a new landmark
+  const addLandmark = async (description, lat, lon) => {
+    try {
+      await addDoc(collection(db, "landmarks"), { description, lat, lon });
+      loadLandmarks();
+    } catch (err) {
+      console.error("Error adding landmark:", err);
+    }
+  };
+
+  // Update an existing landmark
+  const updateLandmark = async (id, description, lat, lon) => {
+    try {
+      await updateDoc(doc(db, "landmarks", id), { description, lat, lon });
+      loadLandmarks();
+    } catch (err) {
+      console.error("Error updating landmark:", err);
+    }
+  };
+
+  // Delete a landmark
+  const deleteLandmark = async (id) => {
+    try {
+      await deleteDoc(doc(db, "landmarks", id));
+      loadLandmarks();
+    } catch (err) {
+      console.error("Error deleting landmark:", err);
+    }
+  };
 
   // === SECTION 05: Effect – Load Saved Phrases on Mount =====================
   useEffect(() => {
@@ -390,7 +521,10 @@ const handleWindRelative = () => {
       loadIncidentSite();
     }, []);
 
-
+    // === Load landmarks once on mount ===
+    useEffect(() => {
+      loadLandmarks();
+    }, []);
 
   // === SECTION 06: State – Location Builder =================================
   const [distanceTotal, setDistanceTotal] = useState(0);
@@ -665,6 +799,8 @@ Address:
     setLandmark1("");
     setLandmark2("");
     setLocationDesc("");
+    setPositionReport("");            // ← clear “Report My Position”
+    setNearestLandmarkReport("");     // ← clear “Auto describe → nearest landmark”
   };
 
   const clearCommentsFields = () => {
@@ -1006,15 +1142,25 @@ Address:
 
               <div style={{ marginBottom: 10 }}>
                 <button onClick={handleGeoAnalyze}>
-                  Analyze Location with AI (experimental)
+                  Acquire Location with AI
+                </button>
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <button onClick={autoDescribeNearest}>
+                  Auto describe » nearest landmark
                 </button>
               </div>
 
 
-              {/* Build Location Description (plus incident‐site report) */}
+              {/* Build Location Description (plus incident-site & nearest-landmark reports) */}
               <textarea
                 value={
-                  [ buildLocationDescription(), positionReport ]
+                  [
+                    buildLocationDescription(),
+                    positionReport,
+                    nearestLandmarkReport
+                  ]
                     .filter(Boolean)
                     .join(". ")
                 }
@@ -1618,31 +1764,183 @@ Address:
             >
               Incident Site
             </div>
+            
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label>
-                <strong>Latitude</strong>
-              </label>
+              <label><strong>Incident Coordinates</strong></label>
               <input
                 type="text"
-                value={incidentLat}
-                onChange={(e) => setIncidentLat(e.target.value)}
-                className="input"
-              />
-
-              <label>
-                <strong>Longitude</strong>
-              </label>
-              <input
-                type="text"
-                value={incidentLon}
-                onChange={(e) => setIncidentLon(e.target.value)}
+                placeholder="43.5844120, -116.1939362"
+                value={incidentCoords}
+                onChange={(e) =>
+                  setIncidentCoords(e.target.value.replace(/['"]/g, ""))
+                }
                 className="input"
               />
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <button onClick={saveIncidentSite}>Save Incident Site</button>
+              <button onClick={handleSaveIncidentCoords}>
+                Save Incident Site
+              </button>
             </div>
+
+            {/* ==== SECTION: Landmarks List & Editor ==== */}
+            <div
+              className="section-header"
+              style={{
+                background: "#333",
+                color: "#fff",
+                padding: "8px 12px",
+                margin: "16px 0",
+              }}
+            >
+              Landmarks
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* — Existing landmarks — */}
+              {landmarks.map((lm) => (
+                <div
+                  key={lm.id}
+                  style={{ display: "flex", gap: 8, alignItems: "center" }}
+                >
+                  <input
+                    type="text"
+                    className="input"
+                    style={{ flex: 3, minWidth: 280 }}
+                    value={
+                      editLandmarks[lm.id]?.description ?? lm.description
+                    }
+                    onChange={(e) =>
+                      setEditLandmarks((prev) => ({
+                        ...prev,
+                        [lm.id]: {
+                          ...prev[lm.id],
+                          description: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                  <input
+                    type="text"
+                    className="input"
+                    style={{ flex: 2, }}
+                    placeholder="lat, lon"
+                    value={
+                      editLandmarks[lm.id]?.coords ??
+                      `${lm.lat}, ${lm.lon}`
+                    }
+                    onChange={(e) =>
+                      setEditLandmarks((prev) => ({
+                        ...prev,
+                        [lm.id]: {
+                          ...prev[lm.id],
+                          coords: e.target.value.replace(/['"]/g, ""),
+                        },
+                      }))
+                    }
+                  />
+                  <button
+                    onClick={() => {
+                      // Prepare updated values
+                      const buf = editLandmarks[lm.id] || {};
+                      const newDesc = buf.description ?? lm.description;
+                      const [latStr = "", lonStr = ""] = (buf.coords ?? `${lm.lat}, ${lm.lon}`)
+                        .split(",");
+                      const newLat = parseFloat(latStr.trim());
+                      const newLon = parseFloat(lonStr.trim());
+
+                      // Debug log what we’re saving
+                      console.log("▶️ Saving landmark:", {
+                        id: lm.id,
+                        description: newDesc,
+                        lat: newLat,
+                        lon: newLon,
+                      });
+
+                      // Call your helper
+                      updateLandmark(lm.id, newDesc, newLat, newLon);
+                    }}
+                    style={{
+                      background: "#3182ce",
+                      color: "#fff",
+                      border: "none",
+                      padding: "0 12px",
+                      height: "32px",
+                      minWidth: "50px",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => deleteLandmark(lm.id)}
+                    style={{
+                      background: "#e53e3e",    // nice red
+                      color: "#fff",
+                      border: "none",
+                      padding: "4px",
+                      borderRadius: "4px",
+                      minWidth: "32px",
+                      height: "32px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    title="Delete"
+                  >
+                    🗑️
+                  </button>                  <a
+                    href={`https://www.google.com/maps?q=${lm.lat},${lm.lon}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Map
+                  </a>
+                </div>
+              ))}
+
+              {/* — Add new landmark — */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Description"
+                  value={newLandmarkDesc}
+                  onChange={(e) => setNewLandmarkDesc(e.target.value)}
+                />
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="lat, lon"
+                  value={newLandmarkCoords}
+                  onChange={(e) =>
+                    setNewLandmarkCoords(e.target.value.replace(/['"]/g, ""))
+                  }
+                />
+                <button
+                  onClick={() => {
+                    const [latStr = "", lonStr = ""] =
+                      newLandmarkCoords.split(",");
+                    addLandmark(
+                      newLandmarkDesc,
+                      parseFloat(latStr.trim()),
+                      parseFloat(lonStr.trim())
+                    );
+                    setNewLandmarkDesc("");
+                    setNewLandmarkCoords("");
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+            {/* ==== end Landmarks Section ==== */}
 
           </>
         )}
@@ -1797,18 +2095,39 @@ Address:
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <label>
-                <strong>Location Description</strong>
-              </label>
-              <textarea
-                value={buildLocationDescription()}
-                readOnly
-                className="input"
-                style={{ background: "#f8f8f8", color: "#222" }}
-              />
-              <button onClick={() => copyToClipboard(buildLocationDescription())}>
-                Copy
-              </button>
+              
+            <label>
+              <strong>Location Description</strong>
+            </label>
+            <textarea
+              value={
+                [
+                  buildLocationDescription(),
+                  positionReport,
+                  nearestLandmarkReport
+                ]
+                  .filter(Boolean)
+                  .join(". ")
+              }
+              readOnly
+              className="input"
+              style={{ background: "#f8f8f8", color: "#222" }}
+            />
+            <button
+              onClick={() =>
+                copyToClipboard(
+                  [
+                    buildLocationDescription(),
+                    positionReport,
+                    nearestLandmarkReport
+                  ]
+                    .filter(Boolean)
+                    .join(". ")
+                )
+              }
+            >
+              Copy
+            </button>
             </div>
 
             <div style={{ marginTop: 10 }}>
