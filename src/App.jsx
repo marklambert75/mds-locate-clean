@@ -205,28 +205,6 @@ function App() {
   };
 
 // === SECTION 04B-1: Helper – Acquire Accurate Position ===
-
-let timerIntervalId = null;
-
-const startGpsTimer = (duration) => {
-  setGpsTimer(duration);
-  timerIntervalId = setInterval(() => {
-    setGpsTimer((t) => {
-      if (t <= 1) {
-        clearInterval(timerIntervalId);
-        return 0;
-      }
-      return t - 1;
-    });
-  }, 1000);
-};
-
-const stopGpsTimer = () => {
-  clearInterval(timerIntervalId);
-  setGpsTimer(0);
-};
-
-
 const acquireAccuratePosition = ({
   timeout = 15000,
   desiredAccuracy = 20
@@ -236,52 +214,60 @@ const acquireAccuratePosition = ({
       reject(new Error("Geolocation not supported."));
       return;
     }
+
     let best = null;
     const startTime = Date.now();
+
+    // start on-screen countdown
+    startGpsTimer(Math.ceil(timeout / 1000));
     console.log(">>> GPS acquisition started");
 
-    // Kick off our on-screen countdown
-    startGpsTimer(Math.ceil(timeout / 1000));
-
-
+    // watchPosition only records best accuracy, never resolves early
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(` [+${elapsed}s] accuracy=${accuracy}m`);
-        if (best === null || accuracy < best.accuracy) {
+        if (!best || accuracy < best.accuracy) {
           best = { latitude, longitude, accuracy };
         }
-        // your early‐exit check:
-        if (accuracy <= desiredAccuracy) {
-          console.log(`→ Desired accuracy met (${accuracy}m), resolving`);
+      },
+      (err) => {
+        // only bail on permission‐denied(1) or explicit timeout(3)
+        if (err.code === 1 || err.code === 3) {
           cleanup();
-          resolve({ latitude, longitude });
+          reject(err);
+        } else {
+          console.warn("Ignored non-fatal GPS error:", err);
         }
       },
-
-(err) => {
-  // err.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-  if (err.code === 1 || err.code === 3) {
-    cleanup();
-    reject(err);
-  } else {
-    console.warn("Ignored non-fatal GPS error:", err);
-  }
-},
-
-
       { enableHighAccuracy: true, maximumAge: 0 }
     );
 
+    // After 15 s, resolve with best fix or fallback
     const timer = setTimeout(() => {
-      stopGpsTimer(); cleanup();
+      cleanup();
+
       if (best) {
         console.log(`→ Timeout; best accuracy was ${best.accuracy}m`);
-        resolve({ latitude: best.latitude, longitude: best.longitude });
+        resolve({
+          latitude: best.latitude,
+          longitude: best.longitude
+        });
       } else {
-        console.log("→ Timeout; no fix seen");
-        reject(new Error("Timed out waiting for GPS lock."));
+        console.log("→ No GPS fix; falling back to getCurrentPosition");
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude
+            });
+          },
+          (e) => {
+            reject(new Error("Fallback getCurrentPosition failed: " + e.message));
+          },
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        );
       }
     }, timeout);
 
@@ -292,8 +278,6 @@ const acquireAccuratePosition = ({
     }
   });
 };
-
-
 
 // === SECTION 04B: Helpers – Distance, Bearing & Report =====================
 
