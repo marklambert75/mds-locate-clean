@@ -36,6 +36,7 @@ function App() {
   const [landmarkImage, setLandmarkImage] = useState(null);
   const [windRelative, setWindRelative] = useState("");
   const [geoStatus, setGeoStatus] = useState("");
+  const [gpsTimer, setGpsTimer] = useState(0);
 
 
   // === Incident Site Coordinates ===
@@ -204,6 +205,28 @@ function App() {
   };
 
 // === SECTION 04B-1: Helper – Acquire Accurate Position ===
+
+let timerIntervalId = null;
+
+const startGpsTimer = (duration) => {
+  setGpsTimer(duration);
+  timerIntervalId = setInterval(() => {
+    setGpsTimer((t) => {
+      if (t <= 1) {
+        clearInterval(timerIntervalId);
+        return 0;
+      }
+      return t - 1;
+    });
+  }, 1000);
+};
+
+const stopGpsTimer = () => {
+  clearInterval(timerIntervalId);
+  setGpsTimer(0);
+};
+
+
 const acquireAccuratePosition = ({
   timeout = 15000,
   desiredAccuracy = 20
@@ -214,42 +237,56 @@ const acquireAccuratePosition = ({
       return;
     }
     let best = null;
+    const startTime = Date.now();
+    console.log(">>> GPS acquisition started");
 
-    // Start watching position
+    // Kick off our on-screen countdown
+    startGpsTimer(Math.ceil(timeout / 1000));
+
+
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
-        // Keep the best (smallest) accuracy seen
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(` [+${elapsed}s] accuracy=${accuracy}m`);
         if (best === null || accuracy < best.accuracy) {
           best = { latitude, longitude, accuracy };
         }
-        // If we’ve met our accuracy goal, stop and resolve
+        // your early‐exit check:
         if (accuracy <= desiredAccuracy) {
+          console.log(`→ Desired accuracy met (${accuracy}m), resolving`);
           cleanup();
           resolve({ latitude, longitude });
         }
       },
-      (err) => {
-        cleanup();
-        reject(err);
-      },
+
+(err) => {
+  // err.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+  if (err.code === 1 || err.code === 3) {
+    cleanup();
+    reject(err);
+  } else {
+    console.warn("Ignored non-fatal GPS error:", err);
+  }
+},
+
+
       { enableHighAccuracy: true, maximumAge: 0 }
     );
 
-    // 15 s timeout fallback
     const timer = setTimeout(() => {
-      cleanup();
+      stopGpsTimer(); cleanup();
       if (best) {
-        resolve({
-          latitude: best.latitude,
-          longitude: best.longitude
-        });
+        console.log(`→ Timeout; best accuracy was ${best.accuracy}m`);
+        resolve({ latitude: best.latitude, longitude: best.longitude });
       } else {
+        console.log("→ Timeout; no fix seen");
         reject(new Error("Timed out waiting for GPS lock."));
       }
     }, timeout);
 
     function cleanup() {
+      stopGpsTimer();
       clearTimeout(timer);
       navigator.geolocation.clearWatch(watchId);
     }
@@ -399,8 +436,8 @@ const handleWindRelative = () => {
   );
 };
 
-// === SECTION 04E: Helpers – Auto‐Describe Nearest Landmark =============
-const autoDescribeNearest = () => {
+// === SECTION 04E: Helpers – Auto‐Describe Nearest Landmark ============
+const autoDescribeNearest = async () => {
   if (!navigator.geolocation) {
     return alert("Geolocation not supported.");
   }
@@ -408,35 +445,38 @@ const autoDescribeNearest = () => {
     return alert("No landmarks defined.");
   }
 
-  navigator.geolocation.getCurrentPosition(
-    ({ coords }) => {
-      const { latitude: curLat, longitude: curLon } = coords;
+  try {
+    // Kick off high-accuracy GPS fix (with on-screen status/timer)
+    setGeoStatus("Waiting for GPS lock…");
+    const { latitude: curLat, longitude: curLon } =
+      await acquireAccuratePosition({ timeout: 15000, desiredAccuracy: 20 });
+    setGeoStatus("");
 
-      // Find closest landmark
-      let best = null;
-      let minDist = Infinity;
-      landmarks.forEach((lm) => {
-        const d = haversine(curLat, curLon, lm.lat, lm.lon);
-        if (d < minDist) {
-          minDist = d;
-          best = lm;
-        }
-      });
+    // Find the closest landmark
+    let best = null;
+    let minDist = Infinity;
+    landmarks.forEach((lm) => {
+      const d = haversine(curLat, curLon, lm.lat, lm.lon);
+      if (d < minDist) {
+        minDist = d;
+        best = lm;
+      }
+    });
+    if (!best) return;
 
-      if (!best) return;
+    // Compute bearing & distance
+    const bearing = computeBearing(best.lat, best.lon, curLat, curLon);
+    const dir     = bearingToCompass(bearing);
+    const distStr = formatDistance(minDist);
 
-      // Compute bearing & distance string
-      const bearing = computeBearing(best.lat, best.lon, curLat, curLon);
-      const dir     = bearingToCompass(bearing);
-      const distStr = formatDistance(minDist);
-
-      // Build the report string
-      setNearestLandmarkReport(`~${distStr} ${dir} of ${best.description}`);
-    },
-    (err) => alert("Unable to get your position: " + err.message),
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
-  );
+    // Update the report
+    setNearestLandmarkReport(`~${distStr} ${dir} of ${best.description}`);
+  } catch (err) {
+    setGeoStatus("");
+    alert("Unable to get your position: " + err.message);
+  }
 };
+
 
 // === SECTION 04F: CRUD Helpers – Instruments =============================
 
@@ -682,27 +722,16 @@ useEffect(() => {
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          await addDoc(collection(db, "locations"), {
-            lat: latitude,
-            lon: longitude,
-            locationDesc: buildLocationDescription(),
-            additionalComments,
-            timestamp: Date.now(),
-          });
-          alert("Fields attached to current location.");
-        } catch (err) {
-          console.error("Error saving location:", err);
-          alert("Failed to attach location.");
-        }
-      },
-      () => {
-        alert("Could not get location.");
-      }
-    );
+try {
+  setGeoStatus("Waiting for GPS lock…");
+  const { latitude, longitude } =
+    await acquireAccuratePosition({ timeout: 15000, desiredAccuracy: 20 });
+  setGeoStatus("");
+  // …then feed latitude/longitude into your reverse-geocode + AI logic…
+} catch (err) {
+  setGeoStatus("");
+  setLocationDesc("Unable to get location: " + err.message);
+}
   };
 
   const handleRetrieveFromLocation = async () => {
@@ -860,24 +889,31 @@ Do not describe surroundings or speculate. Only report what is clearly visible o
     }
   };
 
-  // === SECTION 09: Helpers – Reverse Geocode & AI Location ==================
-  const handleGeoAnalyze = () => {
-    if (!navigator.geolocation) {
-      setLocationDesc("Geolocation not supported.");
-      return;
-    }
+// === SECTION 09: Helpers – Reverse Geocode & AI Location ==================
+const handleGeoAnalyze = async () => {
+  if (!navigator.geolocation) {
+    setLocationDesc("Geolocation not supported.");
+    return;
+  }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-          );
-          const data = await res.json();
-          const displayName = data.display_name || "Unknown location";
+  try {
+    // 1. Start the GPS hunt (and timer)
+    setGeoStatus("Waiting for GPS lock…");
+    const { latitude, longitude } = await acquireAccuratePosition({
+      timeout: 15000,
+      desiredAccuracy: 20
+    });
+    setGeoStatus("");
 
-          const prompt = `
+    // 2. Reverse‐geocode
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+    );
+    const data = await res.json();
+    const displayName = data.display_name || "Unknown location";
+
+    // 3. Call AI for a nice description
+    const prompt = `
 You are generating short, clear field location descriptions based on GPS data.
 
 Using the address below, return a short phrase describing the location. Prioritize:
@@ -891,43 +927,40 @@ Only return the formatted sentence — no commentary or extra data.
 
 Address:
 "${displayName}"
-          `.trim();
+    `.trim();
 
-          const aiRes = await fetch(
-            "https://api.openai.com/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${import.meta.env.VITE_OPENAI_KEY}`,
-              },
-              body: JSON.stringify({
-                model: "gpt-4o",
-                messages: [{ role: "user", content: prompt }],
-              }),
-            }
-          );
-
-          const aiData = await aiRes.json();
-          const aiReplyRaw = aiData.choices?.[0]?.message?.content?.trim();
-          const aiReply = aiReplyRaw?.replace(/^["']|["']$/g, "");
-
-          if (aiReply) {
-            setLocationDesc((prev) => (prev ? `${prev}. ${aiReply}` : aiReply));
-          } else {
-            setLocationDesc((prev) =>
-              prev ? `${prev}. Near ${displayName}` : `Near ${displayName}`
-            );
-          }
-        } catch (error) {
-          setLocationDesc("Unable to fetch location details.");
-        }
-      },
-      () => {
-        setLocationDesc("Permission denied or unavailable.");
+    const aiRes = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_OPENAI_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: prompt }]
+        })
       }
     );
-  };
+
+    const aiData = await aiRes.json();
+    const aiReplyRaw = aiData.choices?.[0]?.message?.content?.trim();
+    const aiReply = aiReplyRaw?.replace(/^["']|["']$/g, "");
+
+    // 4. Update the UI
+    if (aiReply) {
+      setLocationDesc((prev) => (prev ? `${prev}. ${aiReply}` : aiReply));
+    } else {
+      setLocationDesc((prev) =>
+        prev ? `${prev}. Near ${displayName}` : `Near ${displayName}`
+      );
+    }
+  } catch (error) {
+    setGeoStatus("");
+    setLocationDesc("Unable to get location: " + error.message);
+  }
+};
 
   // === SECTION 10: Helpers – Reset & Misc Utility ===========================
   const clearLocationFields = () => {
@@ -1294,12 +1327,14 @@ Address:
                 <button onClick={handleGeoAnalyze}>
                   Acquire Location with AI
                 </button>
+                {gpsTimer > 0 && <span className="timer"> {gpsTimer}s</span>}
               </div>
 
               <div style={{ marginBottom: 10 }}>
                 <button onClick={autoDescribeNearest}>
                   Auto describe » nearest landmark
                 </button>
+                {gpsTimer > 0 && <span className="timer">{gpsTimer}s</span>}
               </div>
 
               {/* Report my position with accuracy feedback */}

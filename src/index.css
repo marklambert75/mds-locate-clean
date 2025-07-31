@@ -126,3 +126,8 @@ button:hover {
   margin-top: 4px;
 }
 
+.timer {
+  margin-left: 6px;
+  font-style: italic;
+  color: #666;
+}
