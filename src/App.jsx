@@ -18,6 +18,9 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
+import { auth, googleProvider } from "./firebase";
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+
 import { storage } from "./firebase";   // ← grabs the storage we just exported
 
 function App() {
@@ -75,6 +78,35 @@ const saveGpsWaitSec = () => {
 
   // — Instrument note injected into Additional Comments —
   const [instrumentNote, setInstrumentNote] = useState("");   // e.g. “Batch number: 123…\nExp date: …”
+
+    // === SECTION 02A: Auth State & Handlers =================================
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // Subscribe to auth state changes
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error("Sign-in error:", err);
+      alert("Failed to sign in");
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Sign-out error:", err);
+      alert("Failed to sign out");
+    }
+  };
 
 
   // === SECTION 03: State – Phrase Manager ==================================
@@ -1164,6 +1196,21 @@ Address:
   ]);
 
   // === SECTION 12: RENDER ===================================================
+
+  // If not signed in, show login screen
+  if (!user) {
+    return (
+      <div className="container" style={{ textAlign: "center", marginTop: 50 }}>
+        <h2>Please sign in with Google to continue</h2>
+        <button onClick={handleSignIn} style={{ padding: "8px 16px", fontSize: 16 }}>
+          Sign in with Google
+        </button>
+      </div>
+    );
+  }
+
+
+
   return (
     <>
       {/* ===== SECTION 12A: Main Container ===== */}
@@ -1172,6 +1219,7 @@ Address:
           <button onClick={() => setActiveScreen("main")}>Main</button>
           <button onClick={() => setActiveScreen("guide")}>Guide</button>
           <button onClick={() => setActiveScreen("settings")}>Settings</button>
+          <button onClick={handleSignOut}>Sign Out</button>
         </div>
         {activeScreen === "main" && (
           <>
