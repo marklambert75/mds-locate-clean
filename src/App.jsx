@@ -205,6 +205,28 @@ function App() {
   };
 
 // === SECTION 04B-1: Helper – Acquire Accurate Position ===
+
+// === SECTION 04B-1a: Helper – GPS Timer Controls ===
+let timerIntervalId = null;
+
+const startGpsTimer = (duration) => {
+  setGpsTimer(duration);
+  timerIntervalId = setInterval(() => {
+    setGpsTimer((t) => {
+      if (t <= 1) {
+        clearInterval(timerIntervalId);
+        return 0;
+      }
+      return t - 1;
+    });
+  }, 1000);
+};
+
+const stopGpsTimer = () => {
+  clearInterval(timerIntervalId);
+  setGpsTimer(0);
+};
+
 const acquireAccuratePosition = ({
   timeout = 15000,
   desiredAccuracy = 20
