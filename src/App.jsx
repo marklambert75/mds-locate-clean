@@ -1329,33 +1329,52 @@ Address:
                 </>
               )}
 
-              <div style={{ marginBottom: 10 }}>
-                <button onClick={handleGeoAnalyze}>
-                  Acquire Location with AI
-                </button>
-                {gpsTimer > 0 && <span className="timer"> {gpsTimer}s</span>}
-              </div>
+          <div
+            style={{
+              border: "1px solid #ddd",
+              padding: "12px",
+              borderRadius: "8px",
+              marginBottom: "16px",
+              background: "#fafafa"
+            }}
+            >
 
+              {/* Acquire Location with AI */}
               <div style={{ marginBottom: 10 }}>
-                <button onClick={autoDescribeNearest}>
-                  Auto describe » nearest landmark
+                <button
+                  onClick={handleGeoAnalyze}
+                  style={{
+                    backgroundColor: "purple",
+                    color: "#fff",
+                    border: "none",
+                    padding: "6px 12px",
+                    borderRadius: "4px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Acquire Location with AI
                 </button>
                 {gpsTimer > 0 && <span className="timer">{gpsTimer}s</span>}
               </div>
 
-              {/* Report my position with accuracy feedback */}
+              {/* Auto describe → nearest landmark */}
               <div style={{ marginBottom: 10 }}>
-                <button onClick={handleReportPosition}>
-                  Report Position
+                <button
+                  onClick={autoDescribeNearest}
+                  style={{
+                    backgroundColor: "purple",
+                    color: "#fff",
+                    border: "none",
+                    padding: "6px 12px",
+                    borderRadius: "4px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Auto describe » nearest landmark
                 </button>
-                {/* show status while waiting */}
-                {geoStatus && (
-                  <div className="status">
-                    {geoStatus}
-                  </div>
-                )}
+                {gpsTimer > 0 && <span className="timer">{gpsTimer}s</span>}
               </div>
-
+            </div>
 
               {/* Build Location Description (plus incident-site & nearest-landmark reports) */}
               <textarea
@@ -1463,12 +1482,34 @@ Address:
             </div>  
 
             {/* ——— Wind » Incident site ——— */}
+
+            <div
+              style={{
+                border: "1px solid #ddd",
+                padding: "12px",
+                borderRadius: "8px",
+                marginBottom: "16px",
+                background: "#fafafa"
+              }}
+            >
+
+            
             <div style={{ marginTop: 8, marginBottom: 12 }}>
-              <button onClick={handleWindRelative}>
+              <button
+                onClick={handleWindRelative}
+                style={{
+                  backgroundColor: "purple",
+                  color: "#fff",
+                  border: "none",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  cursor: "pointer"
+                }}
+              >
                 Wind » Incident site
               </button>
             </div>
-
+          </div>
           </>  
         )}   
 
