@@ -118,3 +118,11 @@ button:hover {
 .instr-row.actions button {
   margin-right: 6px;
 }
+
+/* GPS status feedback under Report Position button */
+.status {
+  font-style: italic;
+  color: #666;
+  margin-top: 4px;
+}
+

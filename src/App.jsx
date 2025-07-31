@@ -35,6 +35,7 @@ function App() {
   const [geoLocationComment, setGeoLocationComment] = useState("");
   const [landmarkImage, setLandmarkImage] = useState(null);
   const [windRelative, setWindRelative] = useState("");
+  const [geoStatus, setGeoStatus] = useState("");
 
 
   // === Incident Site Coordinates ===
@@ -202,6 +203,60 @@ function App() {
     }
   };
 
+// === SECTION 04B-1: Helper – Acquire Accurate Position ===
+const acquireAccuratePosition = ({
+  timeout = 15000,
+  desiredAccuracy = 20
+} = {}) => {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation not supported."));
+      return;
+    }
+    let best = null;
+
+    // Start watching position
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        // Keep the best (smallest) accuracy seen
+        if (best === null || accuracy < best.accuracy) {
+          best = { latitude, longitude, accuracy };
+        }
+        // If we’ve met our accuracy goal, stop and resolve
+        if (accuracy <= desiredAccuracy) {
+          cleanup();
+          resolve({ latitude, longitude });
+        }
+      },
+      (err) => {
+        cleanup();
+        reject(err);
+      },
+      { enableHighAccuracy: true, maximumAge: 0 }
+    );
+
+    // 15 s timeout fallback
+    const timer = setTimeout(() => {
+      cleanup();
+      if (best) {
+        resolve({
+          latitude: best.latitude,
+          longitude: best.longitude
+        });
+      } else {
+        reject(new Error("Timed out waiting for GPS lock."));
+      }
+    }, timeout);
+
+    function cleanup() {
+      clearTimeout(timer);
+      navigator.geolocation.clearWatch(watchId);
+    }
+  });
+};
+
+
 
 // === SECTION 04B: Helpers – Distance, Bearing & Report =====================
 
@@ -257,7 +312,7 @@ const formatDistance = (meters) => {
 };
 
 // Get current GPS, compute & set report
-const handleReportPosition = () => {
+const handleReportPosition = async () => {
   if (!navigator.geolocation) {
     return alert("Geolocation not supported.");
   }
@@ -265,27 +320,33 @@ const handleReportPosition = () => {
     return alert("Please save an incident site first.");
   }
 
-  navigator.geolocation.getCurrentPosition(
-  ({ coords }) => {
-    const curLat = coords.latitude;
-    const curLon = coords.longitude;
+  try {
+    setGeoStatus("Waiting for GPS lock…");
+    const { latitude: curLat, longitude: curLon } =
+      await acquireAccuratePosition({
+        timeout: 15000,
+        desiredAccuracy: 20
+      });
+    setGeoStatus("");
 
-    // Parse your saved strings into numbers
+    // Parse saved incident‐site coords
     const targetLat = parseFloat(incidentLat);
     const targetLon = parseFloat(incidentLon);
     if (isNaN(targetLat) || isNaN(targetLon)) {
       return alert("Invalid incident‐site coordinates.");
     }
 
+    // Your existing distance & bearing calls
     const dist = haversine(curLat, curLon, targetLat, targetLon);
     const bear = computeBearing(curLat, curLon, targetLat, targetLon);
     const dir = bearingToCompass(bear);
     const distStr = formatDistance(dist);
+
     setPositionReport(`${distStr} ${dir} of incident site`);
-  },
-  (err) => alert("Unable to get your position: " + err.message),
-  { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
-);
+  } catch (err) {
+    setGeoStatus("");
+    alert("Unable to get your position: " + err.message);
+  }
 };
 
 // === SECTION 04C: Helpers – Wind ↔ Incident Site ===========================
@@ -1239,6 +1300,19 @@ Address:
                 <button onClick={autoDescribeNearest}>
                   Auto describe » nearest landmark
                 </button>
+              </div>
+
+              {/* Report my position with accuracy feedback */}
+              <div style={{ marginBottom: 10 }}>
+                <button onClick={handleReportPosition}>
+                  Report Position
+                </button>
+                {/* show status while waiting */}
+                {geoStatus && (
+                  <div className="status">
+                    {geoStatus}
+                  </div>
+                )}
               </div>
 
 
