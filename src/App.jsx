@@ -25,110 +25,117 @@ import MapboxLandmarkPicker from "./components/MapboxLandmarkPicker";
 import { storage } from "./firebase";   // ← grabs the storage we just exported
 
 function App() {
-  // === SECTION 02: State – Screen & Core Fields =============================
-  const [activeScreen, setActiveScreen] = useState("main"); // "main" or "guide"
+// === SECTION 02: State – Screen & Core Fields =============================
 
-  const [sceneImage, setSceneImage] = useState(null);
-  const [windDir, setWindDir] = useState("");
-  const [windIntensity, setWindIntensity] = useState("");
-  const [weather, setWeather] = useState("");
-  const [notes, setNotes] = useState("");
-  const [locationDesc, setLocationDesc] = useState("");
-  const [additionalComments, setAdditionalComments] = useState("");
-  const [aiComments, setAiComments] = useState("");
-  const [geoLocationComment, setGeoLocationComment] = useState("");
-  const [landmarkImage, setLandmarkImage] = useState(null);
-  const [windRelative, setWindRelative] = useState("");
-  const [geoStatus, setGeoStatus] = useState("");
-  const [gpsTimer, setGpsTimer] = useState(0);
-  const [gpsWaitSec, setGpsWaitSec] = useState(15);  // user-configurable max wait
+// —— Mode & tab selectors ——————————————————————————
+const [activeScreen, setActiveScreen] = useState("main"); // "main" | "guide" | "settings"
+const [locMethod, setLocMethod] = useState("build");      // "build" | "landmark" | "ai"
+const [buildMode, setBuildMode] = useState("manual");     // "manual" | "map"
+const [isPickingLandmark, setIsPickingLandmark] = useState(false);
+const [manualEntryMode, setManualEntryMode] = useState(false);
 
+// —— Core build-location state ——————————————————————
+const [distanceTotal, setDistanceTotal] = useState(0);
+const [directionFromLandmark, setDirectionFromLandmark] = useState("");
+const [locationType, setLocationType] = useState("");     // "corner" | "edge" | …
+
+// —— UI / photo / weather etc. ——————————————————————
+const [sceneImage, setSceneImage] = useState(null);
+const [windDir, setWindDir] = useState("");
+const [windIntensity, setWindIntensity] = useState("");
+const [weather, setWeather] = useState("");
+const [notes, setNotes] = useState("");
+const [locationDesc, setLocationDesc] = useState("");
+const [additionalComments, setAdditionalComments] = useState("");
+const [aiComments, setAiComments] = useState("");
+const [geoLocationComment, setGeoLocationComment] = useState("");
+const [landmarkImage, setLandmarkImage] = useState(null);
+const [windRelative, setWindRelative] = useState("");
+
+// —— GPS / timer ————————————————————————————————
+const [geoStatus, setGeoStatus] = useState("");
+const [gpsTimer, setGpsTimer] = useState(0);
+const [gpsWaitSec, setGpsWaitSec] = useState(15);
 useEffect(() => {
   const stored = localStorage.getItem("gpsWaitSec");
   if (stored !== null) setGpsWaitSec(Number(stored));
 }, []);
-
 const saveGpsWaitSec = () => {
   localStorage.setItem("gpsWaitSec", gpsWaitSec);
   alert("GPS wait saved.");
 };
 
-  // === Incident Site Coordinates ===
-  const [incidentLat, setIncidentLat] = useState("");
-  const [incidentLon, setIncidentLon] = useState("");
+// —— Incident site & nearest-landmark helpers —————————
+const [incidentLat, setIncidentLat] = useState("");
+const [incidentLon, setIncidentLon] = useState("");
+const [incidentCoords, setIncidentCoords] = useState("");
+const [positionReport, setPositionReport] = useState("");
+const [landmarks, setLandmarks] = useState([]); // [{id, description, lat, lon}]
+const [nearestLandmarkReport, setNearestLandmarkReport] = useState("");
 
-  // === Incident Site Combined Input ===
-  const [incidentCoords, setIncidentCoords] = useState("");
+// —— Landmark builder helpers ——————————————————————
+const [editLandmarks, setEditLandmarks] = useState({});
+const [newLandmarkDesc, setNewLandmarkDesc] = useState("");
+const [newLandmarkCoords, setNewLandmarkCoords] = useState("");
 
-  // === My Position Report String ===
-  const [positionReport, setPositionReport] = useState("");
+// —— Instrument note ——————————————————————————————
+const [instrumentNote, setInstrumentNote] = useState("");
 
-  // === Landmarks List ===
-  const [landmarks, setLandmarks] = useState([]); // [{ id, description, lat, lon }, …]
-  const [nearestLandmarkReport, setNearestLandmarkReport] = useState("");
-  
-  // === Landmarks Edit Buffers & New-Landmark Inputs =======================
-  const [editLandmarks, setEditLandmarks] = useState({}); 
-  // holds per-landmark { description, coords } overrides
+// —— Landmark-type detail fields ————————————————————
+const [cornerDirection, setCornerDirection] = useState("");
+const [edgeDirection, setEdgeDirection] = useState("");
+const [landmark1, setLandmark1] = useState("");
+const [landmark2, setLandmark2] = useState("");
 
-  const [newLandmarkDesc, setNewLandmarkDesc] = useState("");
-  // free-form description for the “Add New” row
+// === SECTION 02A: Auth State & Handlers ===================================
+const [user, setUser] = useState(null);
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+  return unsubscribe;
+}, []);
 
-  const [newLandmarkCoords, setNewLandmarkCoords] = useState("");
-  // free-form “lat, lon” for the “Add New” row
+const handleSignIn = async () => {
+  try {
+    await signInWithPopup(auth, googleProvider);
+  } catch (err) {
+    console.error("Sign-in error:", err);
+    alert("Failed to sign in");
+  }
+};
 
-  // — Instrument note injected into Additional Comments —
-  const [instrumentNote, setInstrumentNote] = useState("");   // e.g. “Batch number: 123…\nExp date: …”
+const handleSignOut = async () => {
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.error("Sign-out error:", err);
+    alert("Failed to sign out");
+  }
+};
 
-    // === SECTION 02A: Auth State & Handlers =================================
-  const [user, setUser] = useState(null);
+// —— Auto-trigger Landmark / AI actions on tab switch —————————
+useEffect(() => {
+  if (locMethod === "landmark") {
+    autoDescribeNearest();
+  } else if (locMethod === "ai") {
+    handleGeoAnalyze();
+  }
+}, [locMethod]);
 
-  useEffect(() => {
-    // Subscribe to auth state changes
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
-    return unsubscribe;
-  }, []);
-
-  const handleSignIn = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (err) {
-      console.error("Sign-in error:", err);
-      alert("Failed to sign in");
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (err) {
-      console.error("Sign-out error:", err);
-      alert("Failed to sign out");
-    }
-  };
-
-// === SECTION 02A: Mapbox Landmark Picker State & Handler ==================
-const [isPickingLandmark, setIsPickingLandmark] = useState(false);
-
+// === SECTION 02B: Mapbox Landmark Picker Handler ===========================
 const handleLandmarkSelect = ({ lat, lon }) => {
-  // Close the modal
   setIsPickingLandmark(false);
-
-  // Store raw coords (still handy if user toggles Manual Entry later)
   setNewLandmarkCoords(`${lat}, ${lon}`);
 
-  // Compute distance + bearing from CURRENT user → tapped landmark
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const curLat = pos.coords.latitude;
       const curLon = pos.coords.longitude;
 
       const meters  = haversine(curLat, curLon, lat, lon);
-      const feet    = Math.round(meters * 3.28084);
+      const feet    = Math.ceil((meters * 3.28084) / 10) * 10;
       const bearing = computeBearing(curLat, curLon, lat, lon);
-      const dir     = bearingToCompass(bearing);
+      const rev     = (bearing + 180) % 360;
+      const dir     = bearingToCompass(rev);
 
       setDistanceTotal(feet);
       setDirectionFromLandmark(dir);
@@ -137,15 +144,6 @@ const handleLandmarkSelect = ({ lat, lon }) => {
     { enableHighAccuracy: true }
   );
 };
-
-const [manualEntryMode, setManualEntryMode] = useState(false);
-
-
-// === SECTION 02A: Location-builder mode selectors ==========================
-const [locMethod, setLocMethod] = useState("build");   // "build" | "landmark" | "ai"
-const [buildMode, setBuildMode] = useState("manual");  // "manual" | "map"
-
-
   // === SECTION 03: State – Phrase Manager ==================================
   const [savedPhrases, setSavedPhrases] = useState([]);
   const [selectedPhrases, setSelectedPhrases] = useState([]);
@@ -798,13 +796,13 @@ useEffect(() => {
     }, []);
 
   // === SECTION 06: State – Location Builder =================================
-  const [distanceTotal, setDistanceTotal] = useState(0);
-  const [directionFromLandmark, setDirectionFromLandmark] = useState("");
-  const [locationType, setLocationType] = useState("");
-  const [cornerDirection, setCornerDirection] = useState("");
-  const [edgeDirection, setEdgeDirection] = useState("");
-  const [landmark1, setLandmark1] = useState("");
-  const [landmark2, setLandmark2] = useState("");
+  // const [distanceTotal, setDistanceTotal] = useState(0);
+  // const [directionFromLandmark, setDirectionFromLandmark] = useState("");
+  // const [locationType, setLocationType] = useState("");
+  // const [cornerDirection, setCornerDirection] = useState("");
+  // const [edgeDirection, setEdgeDirection] = useState("");
+  // const [landmark1, setLandmark1] = useState("");
+ // const [landmark2, setLandmark2] = useState("");
 
   // === SECTION 07: Helpers – Geolocation Storage & Retrieval ===============
   const handleAttachToLocation = async () => {
@@ -1295,10 +1293,15 @@ return (
         setDirectionFromLandmark("");
         setLocationType("");
       }}
-      style={{
-        backgroundColor: locMethod === value ? "#ccc" : "#f0f0f0",
-      }}
-    >
+        style={{
+        backgroundColor: locMethod === value ? "#555" : "#999",
+        color: "#fff",
+        border: "none",
+        padding: "6px 12px",
+        borderRadius: "4px",
+        cursor: "pointer",
+        }}    
+>
       {label}
     </button>
   ))}
@@ -1311,7 +1314,14 @@ return (
     <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
       <button
         onClick={() => setBuildMode("manual")}
-        style={{ backgroundColor: buildMode === "manual" ? "#ddd" : "#f0f0f0" }}
+          style={{
+    backgroundColor: buildMode === "manual" ? "#555" : "#999",
+    color: "#fff",
+    border: "none",
+    padding: "6px 12px",
+    borderRadius: "4px",
+    cursor: "pointer",
+  }}
       >
         Manual
       </button>
@@ -1321,7 +1331,14 @@ return (
           // open map immediately
           setIsPickingLandmark(true);
         }}
-        style={{ backgroundColor: buildMode === "map" ? "#ddd" : "#f0f0f0" }}
+          style={{
+    backgroundColor: buildMode === "manual" ? "#555" : "#999",
+    color: "#fff",
+    border: "none",
+    padding: "6px 12px",
+    borderRadius: "4px",
+    cursor: "pointer",
+  }}
       >
         Map
       </button>
@@ -1364,7 +1381,7 @@ return (
     )}
 
     {/* distance+direction set → show Define Landmark ************************/}
-    {distanceTotal && directionFromLandmark && (
+    {distanceTotal > 0 && directionFromLandmark && (
       <>
         <div
           style={{
