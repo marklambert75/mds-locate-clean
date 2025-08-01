@@ -1152,6 +1152,7 @@ Address:
             : "";
         break;
       case "landmark":
+      case "image":
         base = landmark1
           ? `~${distanceTotal} feet ${directionFromLandmark} of ${landmark1}`
           : "";
