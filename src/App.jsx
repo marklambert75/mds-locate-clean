@@ -20,6 +20,7 @@ import {
 
 import { auth, googleProvider } from "./firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import MapboxLandmarkPicker from "./components/MapboxLandmarkPicker";
 
 import { storage } from "./firebase";   // ← grabs the storage we just exported
 
@@ -108,6 +109,16 @@ const saveGpsWaitSec = () => {
     }
   };
 
+// === SECTION 02A: Mapbox Landmark Picker State & Handler ==================
+const [isPickingLandmark, setIsPickingLandmark] = useState(false);
+
+const handleLandmarkSelect = ({ lat, lon }) => {
+  // fill your coords input and close modal
+  setNewLandmarkCoords(`${lat}, ${lon}`);
+  setIsPickingLandmark(false);
+};
+
+const [manualEntryMode, setManualEntryMode] = useState(false);
 
   // === SECTION 03: State – Phrase Manager ==================================
   const [savedPhrases, setSavedPhrases] = useState([]);
@@ -1195,25 +1206,29 @@ Address:
     instrumentNote
   ]);
 
-  // === SECTION 12: RENDER ===================================================
+// === SECTION 12: RENDER ===================================================
 
-  // If not signed in, show login screen
-  if (!user) {
-    return (
-      <div className="container" style={{ textAlign: "center", marginTop: 50 }}>
-        <h2>Please sign in with Google to continue</h2>
-        <button onClick={handleSignIn} style={{ padding: "8px 16px", fontSize: 16 }}>
-          Sign in with Google
-        </button>
-      </div>
-    );
-  }
-
-
-
+// If not signed in, show login screen
+if (!user) {
   return (
-    <>
-      {/* ===== SECTION 12A: Main Container ===== */}
+    <div className="container" style={{ textAlign: "center", marginTop: 50 }}>
+      <h2>Please sign in with Google to continue</h2>
+      <button onClick={handleSignIn} style={{ padding: "8px 16px", fontSize: 16 }}>
+        Sign in with Google
+      </button>
+    </div>
+  );
+}
+
+return (
+  <>
+    {/* === Mapbox Landmark Picker Modal === */}
+    {isPickingLandmark && (
+      <MapboxLandmarkPicker
+        onSelect={handleLandmarkSelect}
+        onClose={() => setIsPickingLandmark(false)}
+      />
+    )}      {/* ===== SECTION 12A: Main Container ===== */}
       <div className="container">
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <button onClick={() => setActiveScreen("main")}>Main</button>
@@ -2143,149 +2158,139 @@ Address:
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {/* — Existing landmarks — */}
-              {landmarks.map((lm) => (
-                <div key={lm.id} className="landmark-card">
-                  <div className="landmark-row">
+{landmarks.map((lm) => (
+  <div
+    key={lm.id}
+    className="landmark-card"
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "8px",
+      border: "1px solid #ddd",
+      borderRadius: "4px",
+      marginBottom: "4px",
+    }}
+  >
+    {/* Description */}
+    <span>{lm.description}</span>
 
-                  <input
-                    type="text"
-                    className="input"
-                    style={{ flex: 3, }}
-                    value={
-                      editLandmarks[lm.id]?.description ?? lm.description
-                    }
-                    onChange={(e) =>
-                      setEditLandmarks((prev) => ({
-                        ...prev,
-                        [lm.id]: {
-                          ...prev[lm.id],
-                          description: e.target.value
-                        },
-                      }))
-                    }      
+    {/* Action buttons */}
+    <div style={{ display: "flex", gap: "8px" }}>
+      {/* Delete */}
+      <button
+        onClick={() => deleteLandmark(lm.id)}
+        style={{
+          background: "#e53e3e",
+          color: "#fff",
+          border: "none",
+          borderRadius: "50%",
+          width: "32px",
+          height: "32px",
+          padding: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+        }}
+        title="Delete landmark"
+      >
+        ✕
+      </button>
 
-                  />
-                  <input
-                    type="text"
-                    className="input"
-                    style={{ flex: 2, }}
-                    placeholder="lat, lon"
-                    value={
-                      editLandmarks[lm.id]?.coords ??
-                      `${lm.lat}, ${lm.lon}`
-                    }
-                    onChange={(e) =>
-                      setEditLandmarks((prev) => ({
-                        ...prev,
-                        [lm.id]: {
-                          ...prev[lm.id],
-                          coords: e.target.value.replace(/['"()]/g, ""),
-                        },
-                      }))
-                    }
-                  />
-                  <button
-                    onClick={() => {
-                      // Prepare updated values
-                      const buf = editLandmarks[lm.id] || {};
-                      const newDesc = buf.description ?? lm.description;
-                      const [latStr = "", lonStr = ""] = (buf.coords ?? `${lm.lat}, ${lm.lon}`)
-                        .split(",");
-                      const newLat = parseFloat(latStr.trim());
-                      const newLon = parseFloat(lonStr.trim());
-
-                      // Debug log what we’re saving
-                      console.log("▶️ Saving landmark:", {
-                        id: lm.id,
-                        description: newDesc,
-                        lat: newLat,
-                        lon: newLon,
-                      });
-
-                      // Call your helper
-                      updateLandmark(lm.id, newDesc, newLat, newLon);
-                    }}
-                    style={{
-                      background: "#3182ce",
-                      color: "#fff",
-                      border: "none",
-                      padding: "0 12px",
-                      height: "32px",
-                      minWidth: "50px",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => deleteLandmark(lm.id)}
-                    style={{
-                      background: "#e53e3e",    // nice red
-                      color: "#fff",
-                      border: "none",
-                      padding: "4px",
-                      borderRadius: "4px",
-                      minWidth: "32px",
-                      height: "32px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                    }}
-                    title="Delete"
-                  >
-                    🗑️
-                  </button>                  <a
-                    href={`https://www.google.com/maps?q=${lm.lat},${lm.lon}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Map
-                  </a>
-                </div>
-              </div>
-              ))}
+      {/* Map view */}
+      <button
+        onClick={() =>
+          window.open(
+            `https://www.google.com/maps?q=${lm.lat},${lm.lon}`,
+            "_blank"
+          )
+        }
+        style={{
+          background: "#3182ce",
+          color: "#fff",
+          border: "none",
+          borderRadius: "50%",
+          width: "32px",
+          height: "32px",
+          padding: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+        }}
+        title="View on map"
+      >
+        📍
+      </button>
+    </div>
+  </div>
+))}
 
               <hr className="landmark-divider" />
               {/* — Add new landmark — */}
               
-                <div className="landmark-add-row" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>                 
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Description"
-                  value={newLandmarkDesc}
-                  onChange={(e) => setNewLandmarkDesc(e.target.value)}
-                />
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="lat, lon"
-                  value={newLandmarkCoords}
-                  onChange={(e) =>
-                    setNewLandmarkCoords(e.target.value.replace(/[\[\]()"']/g, ""))
-                  }
-                />
-                <button
-                  onClick={() => {
-                    const [latStr = "", lonStr = ""] =
-                      newLandmarkCoords.split(",");
-                    addLandmark(
-                      newLandmarkDesc,
-                      parseFloat(latStr.trim()),
-                      parseFloat(lonStr.trim())
-                    );
-                    setNewLandmarkDesc("");
-                    setNewLandmarkCoords("");
-                  }}
-                >
-                  Add
-                </button>
-              </div>
+<div
+  className="landmark-add-row"
+  style={{ display: "flex", flexDirection: "column", gap: 8 }}
+>
+  {/* Header for the add form */}
+  <div style={{ fontWeight: "bold", fontSize: "1.1em" }}>
+    Add Landmark
+  </div>
+
+  {/* Description field */}
+  <input
+    type="text"
+    className="input"
+    placeholder="Description"
+    value={newLandmarkDesc}
+    onChange={(e) => setNewLandmarkDesc(e.target.value)}
+  />
+
+  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    {/* Map picker */}
+    <button onClick={() => setIsPickingLandmark(true)}>
+      Pick on Map
+    </button>
+
+    {/* Toggle manual entry */}
+    <button onClick={() => setManualEntryMode((m) => !m)}>
+      {manualEntryMode ? "Hide Manual Entry" : "Manual Entry"}
+    </button>
+
+    {/* Manual lat/lon input, shown only if toggled */}
+    {manualEntryMode && (
+      <input
+        type="text"
+        className="input"
+        placeholder="lat, lon"
+        value={newLandmarkCoords}
+        onChange={(e) =>
+          setNewLandmarkCoords(e.target.value.replace(/[\[\]()\"']/g, ""))
+        }
+      />
+    )}
+
+    {/* Add button (only enabled when you have both fields) */}
+    <button
+      onClick={() => {
+        const [latStr = "", lonStr = ""] = newLandmarkCoords.split(",");
+        addLandmark(
+          newLandmarkDesc,
+          parseFloat(latStr.trim()),
+          parseFloat(lonStr.trim())
+        );
+        setNewLandmarkDesc("");
+        setNewLandmarkCoords("");
+        setManualEntryMode(false);
+      }}
+      disabled={!newLandmarkDesc.trim() || !newLandmarkCoords.trim()}
+    >
+      Add
+    </button>
+  </div>
+</div>
             </div>
             {/* ==== end Landmarks Section ==== */}
 
@@ -2458,7 +2463,7 @@ Address:
                 margin: "16px 0",
               }}
             >
-              Situation Assessment
+              Quick phrases
             </div>
 
             {/* --- Mode toggle --- */}
