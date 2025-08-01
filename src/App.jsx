@@ -1163,73 +1163,90 @@ Address:
     return locationDesc ? `${base}. ${locationDesc}` : base;
   };
 
-  // === SECTION 11: Helpers – Weather & Additional‑Comments Builder ==========
-  const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+// === SECTION 11: Helpers – Weather & Additional-Comments Builder ==========
 
-  const weatherDescription = (value) => {
-    switch (value.toLowerCase()) {
-      case "clear":
-        return "Clear skies";
-      case "rain":
-        return "Rainy";
-      case "fog":
-        return "Foggy";
-      case "snow":
-        return "Snowy";
-      case "dust":
-        return "Dusty";
-      default:
-        return value;
-    }
-  };
+// Utility: capitalize first letter
 
-  // === SECTION 11: Helpers – Weather & Additional-Comments Builder ==========
-  const buildAdditionalComments = () => {
-    /* ---------- 1. instrument block becomes its own line ---------- */
-    const firstLine = instrumentNote ? instrumentNote.trim() : "";
 
-    /* ---------- 2. everything else stays on one period-separated line ---------- */
-    const parts = [];
 
-    // --- wind phrase logic ---
-    if (windIntensity === "no wind") {
-      parts.push("No wind");
-    } else if (windIntensity && windDir) {
-      parts.push(`${capitalize(windIntensity)} wind from ${windDir}`);
-    }
+// === PATCH ▸ SECTION 11: Helpers – Weather & Additional-Comments Builder ==========
+//
+// Utility: capitalize first letter
+const capitalize = (text) =>
+  text.length ? text.charAt(0).toUpperCase() + text.slice(1) : "";
 
-    if (weather) parts.push(weatherDescription(weather));
-    if (notes) parts.push(notes);
-    if (aiComments) parts.push(aiComments);
-    if (geoLocationComment) parts.push(geoLocationComment);
+// Utility: expand weather keywords → friendly wording
+const weatherDescription = (value) => {
+  switch (value.toLowerCase()) {
+    case "clear": return "Clear skies";
+    case "rain":  return "Rainy";
+    case "fog":   return "Foggy";
+    case "snow":  return "Snowy";
+    case "dust":  return "Dusty";
+    default:       return value;
+  }
+};
 
-    parts.push(...selectedPhrases);
+/**
+ * buildAdditionalComments()
+ * -------------------------------------------------------------------------
+ * 1–2. Instrument note (Batch number: … / Exp date: …)
+ * 3.   Quick phrases · weather · AI image text · Manual notes (one line)
+ * 4.   Wind intensity & direction · Wind-relative      (same line)
+ *
+ * Segments are joined by newlines; within-line items by periods.
+ */
+const buildAdditionalComments = () => {
+  // Line 1–2: instrument note block
+  const instrumentLines = instrumentNote ? instrumentNote.trim() : "";
 
-    if (windRelative) parts.push(windRelative);
+  // Components for mid-line: quick phrases, weather, AI comments, manual notes
+  const quickStr   = selectedPhrases
+    .map((p) => p.trim().replace(/\.+$/, ""))
+    .join(". ");
+  const weatherStr = weather ? weatherDescription(weather) : "";
+  const aiStr      = aiComments ? aiComments.trim().replace(/\.+$/, "") : "";
+  const noteStr    = notes      ? notes.trim().replace(/\.+$/, "")      : "";
+  const midLine    = [quickStr, noteStr, weatherStr, aiStr]
+    .filter(Boolean)
+    .join(". ");
 
-    /* ---------- 3. build final string ---------- */
-    const trailingLine = parts
-      .filter(Boolean)
-      .map((str) => str.trim().replace(/\.+$/, ""))
-      .join(". ");
+  // Components for wind info
+  let windInfo = "";
+  if (windIntensity === "no wind") {
+    windInfo = "No wind";
+  } else if (windIntensity && windDir) {
+    windInfo = `${capitalize(windIntensity)} wind from ${windDir}`;
+  }
+  const windLine = [windInfo, windRelative]
+    .filter(Boolean)
+    .join(". ");
 
-    // If there’s no instrument line, just return the trailing line
-    return [firstLine, trailingLine].filter(Boolean).join("\n");
-  };
+  // Combine midLine and windLine into one continuous line separated by period
+  const restLine = [midLine, windLine]
+    .filter(Boolean)
+    .join(". ");
 
-  useEffect(() => {
-    setAdditionalComments(buildAdditionalComments());
-  }, [
-    windDir,
-    windIntensity,
-    weather,
-    notes,
-    aiComments,
-    geoLocationComment,
-    selectedPhrases,
-    windRelative,
-    instrumentNote
-  ]);
+  // Assemble final output: if instrumentLines exists, place on top with newline,
+  // otherwise return restLine directly
+  return instrumentLines
+    ? [instrumentLines, restLine].join("\n")
+    : restLine;
+};
+
+// Keep the existing effect to sync additionalComments → state
+useEffect(() => {
+  setAdditionalComments(buildAdditionalComments());
+}, [
+  instrumentNote,
+  selectedPhrases,
+  aiComments,
+  notes,
+  weather,
+  windIntensity,
+  windDir,
+  windRelative
+]);
 
 // === SECTION 12: RENDER ===================================================
 
@@ -1579,6 +1596,41 @@ return (
             >
               Build Additional Comments
             </div>
+            
+        {activeScreen === "main" && (
+          <>
+
+          {/* Instrument note buttons */}
+          <div style={{ display: "flex", gap: 8, margin: "8px 0" }}>
+            <button onClick={() => setInstrumentNote(makeInstrumentNote("UR"))}>UR</button>
+            <button onClick={() => setInstrumentNote(makeInstrumentNote("Gtc"))}>Gastec</button>
+          </div>
+
+
+
+        {/* ===== SECTION 12B: Phrase Quick-Add ===== */}
+        <div style={{ marginTop: 16 }}>
+          <select
+            onChange={(e) => {
+              if (e.target.value) togglePhrase(e.target.value);
+              e.target.selectedIndex = 0;
+            }}
+            className="input"
+            style={{ marginBottom: 12 }}
+          >
+            <option value="">Select phrase to add</option>
+            {[...savedPhrases]
+              .sort((a, b) => a.title.localeCompare(b.title))
+              .map((p) => (
+                <option key={p.id} value={p.content}>
+                  {p.title}
+                </option>
+              ))}
+          </select>
+        </div>
+          
+          </>
+        )}
 
             <div>
               <label>📷 Upload Scene Photo</label>
@@ -1593,6 +1645,18 @@ return (
                 <button onClick={handleSubmit}>Analyze Photo with AI</button>
               )}
             </div>
+
+
+        {/* ===== SECTION 12C: Final Data, Copy Buttons etc (Main only) ===== */}
+        {activeScreen === "main" && (
+          <>
+            <textarea
+              placeholder="Manual notes (e.g. 'crew is trenching 50 ft north of me')"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="input"
+              style={{ height: 100 }}
+            />
 
             {/* Wind / weather */}
             <div style={{ display: "flex", gap: 10, margin: "12px 0" }}>
@@ -1651,37 +1715,127 @@ return (
                   ))}
                 </select>
               </div>
+
+
+<button
+  onClick={handleWindRelative}
+  title="Wind relative to incident"
+  style={{
+    width: "36px",
+    height: "36px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#3182ce",  // Vercel blue
+    border: "none",
+    borderRadius: "4px",
+    color: "#fff",
+    cursor: "pointer",
+    marginLeft: "8px",
+    padding: 0,
+    alignSelf: "center",
+  }}
+>
+  🧭
+</button>
+
+
+
+
+
             </div>  
 
             {/* ——— Wind » Incident site ——— */}
 
-            <div
-              style={{
-                border: "1px solid #ddd",
-                padding: "12px",
-                borderRadius: "8px",
-                marginBottom: "16px",
-                background: "#fafafa"
-              }}
-            >
 
             
-            <div style={{ marginTop: 8, marginBottom: 12 }}>
-              <button
-                onClick={handleWindRelative}
-                style={{
-                  backgroundColor: "purple",
-                  color: "#fff",
-                  border: "none",
-                  padding: "6px 12px",
-                  borderRadius: "4px",
-                  cursor: "pointer"
-                }}
-              >
-                Wind » Incident site
+        
+
+
+
+            <textarea
+              value={additionalComments}
+              readOnly
+              className="input"
+              style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
+            />
+
+            <button onClick={clearCommentsFields}>Clear Comment Fields</button>
+
+            <div
+              className="section-header"
+              style={{
+                background: "#333",
+                color: "#fff",
+                padding: "8px 12px",
+                margin: "16px 0",
+              }}
+            >
+              Final Data for MDS
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <button onClick={handleAttachToLocation} style={{ marginRight: 10 }}>
+                Attach Fields to Location
+              </button>
+              <button onClick={handleRetrieveFromLocation}>
+                Retrieve Fields at Location
               </button>
             </div>
-          </div>
+
+            <div style={{ marginTop: 10 }}>
+              
+            <label>
+              <strong>Location Description</strong>
+            </label>
+            <textarea
+              value={
+                [
+                  buildLocationDescription(),
+                  positionReport,
+                  nearestLandmarkReport
+                ]
+                  .filter(Boolean)
+                  .join(". ")
+              }
+              readOnly
+              className="input"
+              style={{ background: "#f8f8f8", color: "#222" }}
+            />
+            <button
+              onClick={() =>
+                copyToClipboard(
+                  [
+                    buildLocationDescription(),
+                    positionReport,
+                    nearestLandmarkReport
+                  ]
+                    .filter(Boolean)
+                    .join(". ")
+                )
+              }
+            >
+              Copy
+            </button>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <label>
+                <strong>Additional Comments</strong>
+              </label>
+              <textarea
+                value={additionalComments}
+                readOnly
+                className="input"
+                style={{ background: "#f8f8f8", color: "#222" }}
+              />
+              <button onClick={() => copyToClipboard(additionalComments)}>
+                Copy
+              </button>
+            </div>
+          </>
+        )}
+
           </>  
         )}   
 
@@ -2638,133 +2792,9 @@ return (
         )}
 
 
-        {activeScreen === "main" && (
-          <>
-
-        {/* ===== SECTION 12B: Phrase Quick-Add ===== */}
-        <div style={{ marginTop: 16 }}>
-          <select
-            onChange={(e) => {
-              if (e.target.value) togglePhrase(e.target.value);
-              e.target.selectedIndex = 0;
-            }}
-            className="input"
-            style={{ marginBottom: 12 }}
-          >
-            <option value="">Select phrase to add</option>
-            {[...savedPhrases]
-              .sort((a, b) => a.title.localeCompare(b.title))
-              .map((p) => (
-                <option key={p.id} value={p.content}>
-                  {p.title}
-                </option>
-              ))}
-          </select>
-        </div>
-          
-          </>
-        )}
 
 
-        {/* ===== SECTION 12C: Final Data, Copy Buttons etc (Main only) ===== */}
-        {activeScreen === "main" && (
-          <>
-            <textarea
-              placeholder="Manual notes (e.g. 'crew is trenching 50 ft north of me')"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="input"
-              style={{ height: 100 }}
-            />
 
-          {/* Instrument note buttons */}
-          <div style={{ display: "flex", gap: 8, margin: "8px 0" }}>
-            <button onClick={() => setInstrumentNote(makeInstrumentNote("UR"))}>UR</button>
-            <button onClick={() => setInstrumentNote(makeInstrumentNote("Gtc"))}>Gastec</button>
-          </div>
-
-            <textarea
-              value={additionalComments}
-              readOnly
-              className="input"
-              style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
-            />
-
-            <button onClick={clearCommentsFields}>Clear Comment Fields</button>
-
-            <div
-              className="section-header"
-              style={{
-                background: "#333",
-                color: "#fff",
-                padding: "8px 12px",
-                margin: "16px 0",
-              }}
-            >
-              Final Data for MDS
-            </div>
-
-            <div style={{ marginBottom: 10 }}>
-              <button onClick={handleAttachToLocation} style={{ marginRight: 10 }}>
-                Attach Fields to Location
-              </button>
-              <button onClick={handleRetrieveFromLocation}>
-                Retrieve Fields at Location
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              
-            <label>
-              <strong>Location Description</strong>
-            </label>
-            <textarea
-              value={
-                [
-                  buildLocationDescription(),
-                  positionReport,
-                  nearestLandmarkReport
-                ]
-                  .filter(Boolean)
-                  .join(". ")
-              }
-              readOnly
-              className="input"
-              style={{ background: "#f8f8f8", color: "#222" }}
-            />
-            <button
-              onClick={() =>
-                copyToClipboard(
-                  [
-                    buildLocationDescription(),
-                    positionReport,
-                    nearestLandmarkReport
-                  ]
-                    .filter(Boolean)
-                    .join(". ")
-                )
-              }
-            >
-              Copy
-            </button>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <label>
-                <strong>Additional Comments</strong>
-              </label>
-              <textarea
-                value={additionalComments}
-                readOnly
-                className="input"
-                style={{ background: "#f8f8f8", color: "#222" }}
-              />
-              <button onClick={() => copyToClipboard(additionalComments)}>
-                Copy
-              </button>
-            </div>
-          </>
-        )}
       </div>
       {/* ===== END container (SECTION 12) ===== */}
     </>
