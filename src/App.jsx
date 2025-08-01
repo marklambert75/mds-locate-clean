@@ -122,27 +122,33 @@ useEffect(() => {
 }, [locMethod]);
 
 // === SECTION 02B: Mapbox Landmark Picker Handler ===========================
-const handleLandmarkSelect = ({ lat, lon }) => {
+const handleLandmarkSelect = async ({ lat, lon }) => {
+  // Close the picker and record the chosen coords
   setIsPickingLandmark(false);
   setNewLandmarkCoords(`${lat}, ${lon}`);
 
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      const curLat = pos.coords.latitude;
-      const curLon = pos.coords.longitude;
+  try {
+    // Show GPS‐lock status and wait for a high‐accuracy fix
+    setGeoStatus("Waiting for GPS lock…");
+    const { latitude: curLat, longitude: curLon } =
+      await acquireAccuratePosition({ desiredAccuracy: 20 });
+    setGeoStatus("");
 
-      const meters  = haversine(curLat, curLon, lat, lon);
-      const feet    = Math.ceil((meters * 3.28084) / 10) * 10;
-      const bearing = computeBearing(curLat, curLon, lat, lon);
-      const rev     = (bearing + 180) % 360;
-      const dir     = bearingToCompass(rev);
+    // Compute the distance in feet & the compass bearing
+    const meters  = haversine(curLat, curLon, lat, lon);
+    const feet    = Math.ceil((meters * 3.28084) / 10) * 10;
+    const bearing = computeBearing(curLat, curLon, lat, lon);
+    const rev     = (bearing + 180) % 360;
+    const dir     = bearingToCompass(rev);
 
-      setDistanceTotal(feet);
-      setDirectionFromLandmark(dir);
-    },
-    (err) => alert("Unable to get your location: " + err.message),
-    { enableHighAccuracy: true }
-  );
+    // Update your state
+    setDistanceTotal(feet);
+    setDirectionFromLandmark(dir);
+  } catch (err) {
+    // On error (timeout or permission), clear status and alert
+    setGeoStatus("");
+    alert("Unable to get your location: " + err.message);
+  }
 };
   // === SECTION 03: State – Phrase Manager ==================================
   const [savedPhrases, setSavedPhrases] = useState([]);
@@ -1328,39 +1334,63 @@ return (
 {/* ───────────────────── Method: BUILD ──────────────────────────────────── */}
 {locMethod === "build" && (
   <>
-    {/* Sub-selector Manual vs Map */}
-    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-      <button
-        onClick={() => setBuildMode("manual")}
-          style={{
-    backgroundColor: buildMode === "manual" ? "#555" : "#999",
-    color: "#fff",
-    border: "none",
-    padding: "6px 12px",
-    borderRadius: "4px",
-    cursor: "pointer",
+{/* ── Sub-selector: Manual vs Map (with GPS timer) ─────────────────── */}
+<div
+  style={{
+    display: "flex",
+    gap: 8,
+    alignItems: "center",     // vertical align all items
+    marginBottom: 12,
   }}
-      >
-        Manual
-      </button>
-      <button
-        onClick={() => {
-          setBuildMode("map");
-          // open map immediately
-          setIsPickingLandmark(true);
-        }}
-          style={{
-    backgroundColor: buildMode === "manual" ? "#555" : "#999",
-    color: "#fff",
-    border: "none",
-    padding: "6px 12px",
-    borderRadius: "4px",
-    cursor: "pointer",
-  }}
-      >
-        Map
-      </button>
-    </div>
+>
+  {/* Manual mode */}
+  <button
+    onClick={() => setBuildMode("manual")}
+    style={{
+      backgroundColor: buildMode === "manual" ? "#555" : "#999",
+      color: "#fff",
+      border: "none",
+      padding: "6px 12px",
+      borderRadius: "4px",
+      cursor: "pointer",
+    }}
+  >
+    Manual
+  </button>
+
+  {/* Map mode (opens the picker) */}
+  <button
+    onClick={() => {
+      setBuildMode("map");
+      setIsPickingLandmark(true);
+    }}
+    style={{
+      backgroundColor: buildMode === "map" ? "#555" : "#999",
+      color: "#fff",
+      border: "none",
+      padding: "6px 12px",
+      borderRadius: "4px",
+      cursor: "pointer",
+    }}
+  >
+    Map
+  </button>
+
+  {/* GPS‐lock timer */}
+  {gpsTimer > 0 && (
+    <span
+      className="timer"
+      style={{
+        marginLeft: 8,
+        fontFamily: "monospace",
+        fontSize: "0.9rem",
+        color: "#333",
+      }}
+    >
+      {gpsTimer}s
+    </span>
+  )}
+</div>
 
     {/* ── Manual distance + direction UI ───────────────────────────────── */}
     {buildMode === "manual" && (
