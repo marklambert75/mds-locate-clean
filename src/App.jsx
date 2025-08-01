@@ -113,12 +113,38 @@ const saveGpsWaitSec = () => {
 const [isPickingLandmark, setIsPickingLandmark] = useState(false);
 
 const handleLandmarkSelect = ({ lat, lon }) => {
-  // fill your coords input and close modal
-  setNewLandmarkCoords(`${lat}, ${lon}`);
+  // Close the modal
   setIsPickingLandmark(false);
+
+  // Store raw coords (still handy if user toggles Manual Entry later)
+  setNewLandmarkCoords(`${lat}, ${lon}`);
+
+  // Compute distance + bearing from CURRENT user → tapped landmark
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const curLat = pos.coords.latitude;
+      const curLon = pos.coords.longitude;
+
+      const meters  = haversine(curLat, curLon, lat, lon);
+      const feet    = Math.round(meters * 3.28084);
+      const bearing = computeBearing(curLat, curLon, lat, lon);
+      const dir     = bearingToCompass(bearing);
+
+      setDistanceTotal(feet);
+      setDirectionFromLandmark(dir);
+    },
+    (err) => alert("Unable to get your location: " + err.message),
+    { enableHighAccuracy: true }
+  );
 };
 
 const [manualEntryMode, setManualEntryMode] = useState(false);
+
+
+// === SECTION 02A: Location-builder mode selectors ==========================
+const [locMethod, setLocMethod] = useState("build");   // "build" | "landmark" | "ai"
+const [buildMode, setBuildMode] = useState("manual");  // "manual" | "map"
+
 
   // === SECTION 03: State – Phrase Manager ==================================
   const [savedPhrases, setSavedPhrases] = useState([]);
@@ -1240,227 +1266,288 @@ return (
           <>
             <h1>MDS Assist</h1>
 
-            {/* Build Location Description */}
-            <div
-              className="section-header"
+{/* ─────────────────────── Build Location Description ───────────────────── */}
+<div
+  className="section-header"
+  style={{
+    background: "#333",
+    color: "#fff",
+    padding: "8px 12px",
+    margin: "16px 0",
+  }}
+>
+  Build Location Description
+</div>
+
+{/* ── Top-level method tabs ─────────────────────────────────────────────── */}
+<div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+  {[
+    { label: "Build", value: "build" },
+    { label: "Landmark", value: "landmark" },
+    { label: "AI (experimental)", value: "ai" },
+  ].map(({ label, value }) => (
+    <button
+      key={value}
+      onClick={() => {
+        setLocMethod(value);
+        // reset conflicting state on tab switch
+        setDistanceTotal(0);
+        setDirectionFromLandmark("");
+        setLocationType("");
+      }}
+      style={{
+        backgroundColor: locMethod === value ? "#ccc" : "#f0f0f0",
+      }}
+    >
+      {label}
+    </button>
+  ))}
+</div>
+
+{/* ───────────────────── Method: BUILD ──────────────────────────────────── */}
+{locMethod === "build" && (
+  <>
+    {/* Sub-selector Manual vs Map */}
+    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      <button
+        onClick={() => setBuildMode("manual")}
+        style={{ backgroundColor: buildMode === "manual" ? "#ddd" : "#f0f0f0" }}
+      >
+        Manual
+      </button>
+      <button
+        onClick={() => {
+          setBuildMode("map");
+          // open map immediately
+          setIsPickingLandmark(true);
+        }}
+        style={{ backgroundColor: buildMode === "map" ? "#ddd" : "#f0f0f0" }}
+      >
+        Map
+      </button>
+    </div>
+
+    {/* ── Manual distance + direction UI ───────────────────────────────── */}
+    {buildMode === "manual" && (
+      <>
+        <div style={{ margin: "4px 0 8px 0" }}>
+          Set distance and direction to landmark.
+        </div>
+
+        {/* Distance buttons */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          {[5, 10, 20, 50, 100].map((n) => (
+            <button key={n} onClick={() => setDistanceTotal(distanceTotal + n)}>
+              {n}
+            </button>
+          ))}
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          Total est distance: ~{distanceTotal} feet
+        </div>
+
+        {/* Direction dropdown */}
+        <select
+          value={directionFromLandmark}
+          onChange={(e) => setDirectionFromLandmark(e.target.value)}
+          className="input"
+          style={{ marginBottom: 8 }}
+        >
+          <option value="">Direction from landmark</option>
+          {["N", "NE", "E", "SE", "S", "SW", "W", "NW"].map((dir) => (
+            <option key={dir} value={dir}>
+              {dir}
+            </option>
+          ))}
+        </select>
+      </>
+    )}
+
+    {/* distance+direction set → show Define Landmark ************************/}
+    {distanceTotal && directionFromLandmark && (
+      <>
+        <div
+          style={{
+            margin: "16px 0 8px",
+            fontWeight: "bold",
+          }}
+        >
+          Define landmark
+        </div>
+
+        {/* Landmark-type buttons */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {[
+            { label: "Corner", value: "corner" },
+            { label: "Edge", value: "edge" },
+            { label: "Intersection", value: "intersection" },
+            { label: "Point", value: "landmark" },
+            { label: "Image", value: "image" },
+          ].map(({ label, value }) => (
+            <button
+              key={value}
+              onClick={() => setLocationType(value)}
               style={{
-                background: "#333",
-                color: "#fff",
-                padding: "8px 12px",
-                margin: "16px 0",
+                backgroundColor: locationType === value ? "#ccc" : "",
               }}
             >
-              Build Location Description
-            </div>
+              {label}
+            </button>
+          ))}
+        </div>
 
-            {/* Distance, direction & landmark controls */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ margin: "4px 0 8px 0" }}>
-                Select distance in feet (values cumulate)
-              </div>
-              <div
-                style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}
-              >
-                {[5, 10, 20, 50, 100].map((n) => (
-                  <button key={n} onClick={() => setDistanceTotal(distanceTotal + n)}>
-                    {n}
-                  </button>
-                ))}
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                Total est distance: ~{distanceTotal} feet
-              </div>
-
-              <select
-                value={directionFromLandmark}
-                onChange={(e) => setDirectionFromLandmark(e.target.value)}
-                className="input"
-                style={{ marginBottom: 8 }}
-              >
-                <option value="">Direction from landmark</option>
-                {["N", "NE", "E", "SE", "S", "SW", "W", "NW"].map((dir) => (
-                  <option key={dir} value={dir}>
-                    {dir}
-                  </option>
-                ))}
-              </select>
-
-              <div
-                style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}
-              >
-                {[
-                  { label: "Corner of", value: "corner" },
-                  { label: "Edge of", value: "edge" },
-                  { label: "Intersection of", value: "intersection" },
-                  { label: "Landmark only", value: "landmark" },
-                ].map(({ label, value }) => (
-                  <button
-                    key={value}
-                    onClick={() => setLocationType(value)}
-                    style={{ backgroundColor: locationType === value ? "#ccc" : "" }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Dynamic inputs based on locationType */}
-              {locationType === "corner" && (
-                <>
-                  <select
-                    value={cornerDirection}
-                    onChange={(e) => setCornerDirection(e.target.value)}
-                    className="input"
-                  >
-                    <option value="">Select corner</option>
-                    {["NE", "NW", "SE", "SW"].map((dir) => (
-                      <option key={dir} value={dir}>
-                        {dir}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    placeholder="Enter landmark"
-                    value={landmark1}
-                    onChange={(e) => setLandmark1(e.target.value)}
-                    className="input"
-                  />
-                </>
-              )}
-
-              {locationType === "edge" && (
-                <>
-                  <select
-                    value={edgeDirection}
-                    onChange={(e) => setEdgeDirection(e.target.value)}
-                    className="input"
-                  >
-                    <option value="">Select edge direction</option>
-                    {["N", "E", "S", "W"].map((dir) => (
-                      <option key={dir} value={dir}>
-                        {dir}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    placeholder="Enter landmark"
-                    value={landmark1}
-                    onChange={(e) => setLandmark1(e.target.value)}
-                    className="input"
-                  />
-                </>
-              )}
-
-              {locationType === "intersection" && (
-                <>
-                  <input
-                    placeholder="First road or feature"
-                    value={landmark1}
-                    onChange={(e) => setLandmark1(e.target.value)}
-                    className="input"
-                  />
-                  <input
-                    placeholder="Second road or feature"
-                    value={landmark2}
-                    onChange={(e) => setLandmark2(e.target.value)}
-                    className="input"
-                  />
-                </>
-              )}
-
-              {locationType === "landmark" && (
-                <>
-                  <input
-                    placeholder="Enter landmark"
-                    value={landmark1}
-                    onChange={(e) => setLandmark1(e.target.value)}
-                    className="input"
-                  />
-
-                  <div style={{ marginTop: 10 }}>
-                    <label>📷 Upload Landmark Photo</label>
-                    <br />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleImageUpload(e, setLandmarkImage)}
-                      className="input"
-                    />
-                    <button
-                      onClick={handleAnalyzeLandmarkImage}
-                      style={{ marginTop: 8 }}
-                    >
-                      Analyze Landmark with AI
-                    </button>
-                  </div>
-                </>
-              )}
-
-          <div
-            style={{
-              border: "1px solid #ddd",
-              padding: "12px",
-              borderRadius: "8px",
-              marginBottom: "16px",
-              background: "#fafafa"
-            }}
+        {/* Dynamic landmark inputs */}
+        {locationType === "corner" && (
+          <>
+            <select
+              value={cornerDirection}
+              onChange={(e) => setCornerDirection(e.target.value)}
+              className="input"
             >
+              <option value="">Select corner</option>
+              {["NE", "NW", "SE", "SW"].map((dir) => (
+                <option key={dir} value={dir}>
+                  {dir}
+                </option>
+              ))}
+            </select>
+            <input
+              placeholder="Enter landmark"
+              value={landmark1}
+              onChange={(e) => setLandmark1(e.target.value)}
+              className="input"
+            />
+          </>
+        )}
 
-              {/* Acquire Location with AI */}
-              <div style={{ marginBottom: 10 }}>
-                <button
-                  onClick={handleGeoAnalyze}
-                  style={{
-                    backgroundColor: "purple",
-                    color: "#fff",
-                    border: "none",
-                    padding: "6px 12px",
-                    borderRadius: "4px",
-                    cursor: "pointer"
-                  }}
-                >
-                  Acquire Location with AI
-                </button>
-                {gpsTimer > 0 && <span className="timer">{gpsTimer}s</span>}
-              </div>
+        {locationType === "edge" && (
+          <>
+            <select
+              value={edgeDirection}
+              onChange={(e) => setEdgeDirection(e.target.value)}
+              className="input"
+            >
+              <option value="">Select edge direction</option>
+              {["N", "E", "S", "W"].map((dir) => (
+                <option key={dir} value={dir}>
+                  {dir}
+                </option>
+              ))}
+            </select>
+            <input
+              placeholder="Enter landmark"
+              value={landmark1}
+              onChange={(e) => setLandmark1(e.target.value)}
+              className="input"
+            />
+          </>
+        )}
 
-              {/* Auto describe → nearest landmark */}
-              <div style={{ marginBottom: 10 }}>
-                <button
-                  onClick={autoDescribeNearest}
-                  style={{
-                    backgroundColor: "purple",
-                    color: "#fff",
-                    border: "none",
-                    padding: "6px 12px",
-                    borderRadius: "4px",
-                    cursor: "pointer"
-                  }}
-                >
-                  Auto describe » nearest landmark
-                </button>
-                {gpsTimer > 0 && <span className="timer">{gpsTimer}s</span>}
-              </div>
-            </div>
+        {locationType === "intersection" && (
+          <>
+            <input
+              placeholder="First road or feature"
+              value={landmark1}
+              onChange={(e) => setLandmark1(e.target.value)}
+              className="input"
+            />
+            <input
+              placeholder="Second road or feature"
+              value={landmark2}
+              onChange={(e) => setLandmark2(e.target.value)}
+              className="input"
+            />
+          </>
+        )}
 
-              {/* Build Location Description (plus incident-site & nearest-landmark reports) */}
-              <textarea
-                value={
-                  [
-                    buildLocationDescription(),
-                    positionReport,
-                    nearestLandmarkReport
-                  ]
-                    .filter(Boolean)
-                    .join(". ")
-                }
-                readOnly
-                className="input"
-                style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
-              />
+        {locationType === "landmark" && (
+          <input
+            placeholder="Enter landmark"
+            value={landmark1}
+            onChange={(e) => setLandmark1(e.target.value)}
+            className="input"
+          />
+        )}
 
-              <button onClick={clearLocationFields}>Clear Location Fields</button>
-            </div>
+        {locationType === "image" && (
+          <div style={{ marginTop: 10 }}>
+            <label>📷 Upload Landmark Photo</label>
+            <br />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageUpload(e, setLandmarkImage)}
+              className="input"
+            />
+            <button
+              onClick={handleAnalyzeLandmarkImage}
+              style={{ marginTop: 8 }}
+            >
+              Analyze Landmark with AI
+            </button>
+          </div>
+        )}
+      </>
+    )}
+  </>
+)}
+
+{/* ──────────────────── Method: LANDMARK ─────────────────────────────────── */}
+{locMethod === "landmark" && (
+  <div style={{ margin: "16px 0" }}>
+    <button
+      onClick={autoDescribeNearest}
+      style={{
+        backgroundColor: "purple",
+        color: "#fff",
+        border: "none",
+        padding: "6px 12px",
+        borderRadius: "4px",
+        cursor: "pointer",
+      }}
+    >
+      Auto describe » nearest landmark
+    </button>
+    {gpsTimer > 0 && <span className="timer">{gpsTimer}s</span>}
+  </div>
+)}
+
+{/* ─────────────────── Method: AI (experimental) ─────────────────────────── */}
+{locMethod === "ai" && (
+  <div style={{ margin: "16px 0" }}>
+    <button
+      onClick={handleGeoAnalyze}
+      style={{
+        backgroundColor: "purple",
+        color: "#fff",
+        border: "none",
+        padding: "6px 12px",
+        borderRadius: "4px",
+        cursor: "pointer",
+      }}
+    >
+      Acquire Location with AI
+    </button>
+    {gpsTimer > 0 && <span className="timer">{gpsTimer}s</span>}
+  </div>
+)}
+
+{/* ──────────────── Preview + Clear buttons (unchanged) ──────────────────── */}
+<textarea
+  value={
+    [
+      buildLocationDescription(),
+      positionReport,
+      nearestLandmarkReport,
+    ]
+      .filter(Boolean)
+      .join(". ")
+  }
+  readOnly
+  className="input"
+  style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
+/>
+<button onClick={clearLocationFields}>Clear Location Fields</button>
 
             {/* Build Additional Comments */}
             <div
