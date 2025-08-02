@@ -73,9 +73,11 @@ function App() {
   };
 
 // === SECTION 02B: Mapbox Landmark Picker Handler ==========================
-const handleLandmarkSelect = async ({ lat, lon }) => {
-  // close the picker
+  const handleLandmarkSelect = async ({ lat, lon }) => {
+  // Close the picker
   setIsPickingLandmark(false);
+  // **Capture coords for the Add-Landmark form**
+  setNewLandmarkCoords(`${lat}, ${lon}`);
 
   try {
     // show GPS-lock countdown
@@ -2179,27 +2181,21 @@ return (
 
   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
     {/* Map picker */}
-    <button onClick={() => setIsPickingLandmark(true)}>
-      Pick on Map
-    </button>
+{/* — Pick on map button — */}
+<button onClick={() => setIsPickingLandmark(true)}>
+  Pick on Map
+</button>
 
-    {/* Toggle manual entry */}
-    <button onClick={() => setManualEntryMode((m) => !m)}>
-      {manualEntryMode ? "Hide Manual Entry" : "Manual Entry"}
-    </button>
-
-    {/* Manual lat/lon input, shown only if toggled */}
-    {manualEntryMode && (
-      <input
-        type="text"
-        className="input"
-        placeholder="lat, lon"
-        value={newLandmarkCoords}
-        onChange={(e) =>
-          setNewLandmarkCoords(e.target.value.replace(/[\[\]()\"']/g, ""))
-        }
-      />
-    )}
+{/* — Show picked coords as soon as they arrive — */}
+{newLandmarkCoords && (
+  <input
+    type="text"
+    className="input"
+    readOnly
+    value={newLandmarkCoords}
+    style={{ marginTop: 8 }}
+  />
+)}
 
     {/* Add button (only enabled when you have both fields) */}
     <button
