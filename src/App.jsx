@@ -72,6 +72,97 @@ function App() {
     }
   };
 
+// === SECTION 02B: Mapbox Landmark Picker Handler ==========================
+const handleLandmarkSelect = async ({ lat, lon }) => {
+  // close the picker
+  setIsPickingLandmark(false);
+
+  try {
+    // show GPS-lock countdown
+    setGeoStatus("Waiting for GPS lock…");
+    const { latitude: curLat, longitude: curLon } =
+      await acquireAccuratePosition({ desiredAccuracy: 20 });
+    setGeoStatus("");
+
+    // compute distance and bearing
+    const meters = haversine(curLat, curLon, lat, lon);
+    const feet   = Math.ceil((meters * 3.28084) / 10) * 10;
+    const bearing = computeBearing(curLat, curLon, lat, lon);
+    const rev     = (bearing + 180) % 360;
+    const dir     = bearingToCompass(rev);
+
+    setDistanceTotal(feet);
+    setDirectionFromLandmark(dir);
+  } catch (err) {
+    setGeoStatus("");
+    alert("Unable to get your location: " + err.message);
+  }
+};
+
+// === SECTION 02C: Reverse-Geocode & AI Location Helper ===================
+const handleGeoAnalyze = async () => {
+  if (!navigator.geolocation) {
+    setLocationDesc("Geolocation not supported.");
+    return;
+  }
+
+  try {
+    setGeoStatus("Waiting for GPS lock…");
+    const { latitude, longitude } = await acquireAccuratePosition({ desiredAccuracy: 20 });
+    setGeoStatus("");
+
+    // reverse-geocode
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+    );
+    const data = await res.json();
+    const displayName = data.display_name || "Unknown location";
+
+    // AI prompt
+    const prompt = `
+Generate a short, clear field location descriptions based on GPS data. 
+Examples of good responses:
+"2023 S Crystal Way"
+"N corner of Green Ivy sports field"
+"Intersection of Smith and Murphy Street"
+"~100 ft W of Intersection of Danube St and Garbanzo Way"
+The information must be factual. It is better to be non-specific and say "NW corner of field" than
+to make up the name of the field. Never punt a response. If you have no data to return, simply respond
+with "-".
+
+Address:
+"${displayName}"
+    `.trim();
+
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_OPENAI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    const aiData  = await aiRes.json();
+    const aiReply = aiData.choices?.[0]?.message?.content?.trim();
+    const cleaned = aiReply?.replace(/^["']|["']$/g, "");
+
+    setLocationDesc((prev) =>
+      cleaned
+        ? prev
+          ? `${prev}. ${cleaned}`
+          : cleaned
+        : prev
+    );
+  } catch (error) {
+    setGeoStatus("");
+    setLocationDesc("Unable to get location: " + error.message);
+  }
+};
+
   // === SECTION 03: Location‑Builder State =================================
   const [distanceTotal, setDistanceTotal] = useState(0);
   const [directionFromLandmark, setDirectionFromLandmark] = useState("");
@@ -659,7 +750,12 @@ const handleRetrieveFromLocation = async () => {
           text: `You are provided with a site image.
 
 Describe visible primary objects and immediate terrain in short factual phrases.
-Ignore background scenery. Do NOT infer weather or wind.`
+Ignore background scenery. Do NOT infer weather or wind. Examples of good phrases:
+"A team of workers are digging a ditch."
+"Excavator and skidsteer excavating a berm."
+"Puddles of water have an oily sheen."
+"River with algae. Wildlife present, including heron and turtle."
+`
         },
         { type: "image_url", image_url: { url: sceneImage } },
       ],
@@ -825,6 +921,7 @@ Ignore background scenery. Do NOT infer weather or wind.`
         setIsPickingLandmark(false);
         setNewLandmarkCoords(`${lat}, ${lon}`);
       }}
+      onSelect={handleLandmarkSelect}
       onClose={() => setIsPickingLandmark(false)}
     />
   );
@@ -833,7 +930,7 @@ return (
   <>
     {landmarkPicker}  {/* Mapbox modal is injected via constant */}
 
-    {/* ===== SECTION 12A: Main Container ===== */}
+    {/* ===== SECTION 22: Main Container ===== */}
     <div className="container">
       <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
         <button onClick={() => setActiveScreen("main")}>Main</button>
@@ -1195,7 +1292,7 @@ return (
 
 
 
-        {/* ===== SECTION 12B: Phrase Quick-Add ===== */}
+        {/* ===== SECTION 22B: Phrase Quick-Add ===== */}
         <div style={{ marginTop: 16 }}>
           <select
             onChange={(e) => {
@@ -1234,7 +1331,7 @@ return (
             </div>
 
 
-        {/* ===== SECTION 12C: Final Data, Copy Buttons etc (Main only) ===== */}
+        {/* ===== SECTION 22C: Final Data, Copy Buttons etc (Main only) ===== */}
         {activeScreen === "main" && (
           <>
             <textarea
@@ -2383,7 +2480,7 @@ return (
 
 
       </div>
-      {/* ===== END container (SECTION 12) ===== */}
+      {/* ===== END container  ===== */}
     </>
   ); // end return
 } // end App()
