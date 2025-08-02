@@ -1,0 +1,33 @@
+[
+  {
+    "id": "equipment",
+    "title": "Equipment",
+    "timestamp": 1620000000000,
+    "items": [
+      { "type": "section", "heading": "Heavy Machinery" },
+      { "type": "entry",   "fieldName": "Excavator",   "fieldValue": "CAT 320",         "comment": "" },
+      { "type": "entry",   "fieldName": "Bulldozer",   "fieldValue": "Komatsu D65",    "comment": "" },
+      { "type": "image",   "src": "https://example.com/excavator.png", "caption": "CAT 320 in action" }
+    ]
+  },
+  {
+    "id": "landFeatures",
+    "title": "Land features",
+    "timestamp": 1620000100000,
+    "items": [
+      { "type": "section", "heading": "Soil Types" },
+      { "type": "entry",   "fieldName": "Clay",        "fieldValue": "Low permeability",   "comment": "" },
+      { "type": "entry",   "fieldName": "Sand",        "fieldValue": "High permeability",  "comment": "" }
+    ]
+  },
+  {
+    "id": "sieraMinicanPickup",
+    "title": "SIERA – Minican pickup – field sample",
+    "timestamp": 1620000200000,
+    "items": [
+      { "type": "section", "heading": "Pickup Procedure" },
+      { "type": "entry",   "fieldName": "Container",   "fieldValue": "Minican #3A",  "comment": "" },
+      { "type": "entry",   "fieldName": "Sample Volume","fieldValue": "500 mL",      "comment": "" }
+    ]
+  }
+]

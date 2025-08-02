@@ -252,6 +252,21 @@ Address:
     loadIncidentSite();
   }, []);
 
+  // === SECTION 10A: Prefill Builder when editing a guide ==================
+  useEffect(() => {
+    if (guideMode !== "edit") return;
+    const g = guides.find((gg) => gg.id === selectedGuideId);
+    if (g) {
+      setBuilderTitle(g.title || "");
+      setBuilderItems(g.items || []);
+    } else {
+      setBuilderTitle("");
+      setBuilderItems([]);
+    }
+    setBuilderAddMode("");
+  }, [guideMode, selectedGuideId, guides]);
+
+
   /* ---------------------------------------------------------------------- */
   /*                          Firestore CRUD blocks                         */
   /* ---------------------------------------------------------------------- */
@@ -350,6 +365,69 @@ Address:
       console.error("Error updating guide:", err);
     }
   };
+
+// === SECTION 12A: Guide‑builder Helpers (UI-only) ========================
+const addSectionHeading = () => {
+  if (!newSectionHeading.trim()) return;
+  setBuilderItems((items) => [
+    ...items,
+    { type: "section", heading: newSectionHeading.trim() },
+  ]);
+  setNewSectionHeading("");
+  setBuilderAddMode("");
+};
+
+const addEntryItem = () => {
+  if (!newEntryFieldName.trim() || !newEntryFieldValue.trim()) return;
+  setBuilderItems((items) => [
+    ...items,
+    {
+      type: "entry",
+      fieldName: newEntryFieldName.trim(),
+      fieldValue: newEntryFieldValue.trim(),
+      comment: newEntryComment.trim(),
+    },
+  ]);
+  setNewEntryFieldName("");
+  setNewEntryFieldValue("");
+  setNewEntryComment("");
+  setBuilderAddMode("");
+};
+
+const addImageItem = async () => {
+  if (!newImageFile) return;
+  // Upload to Firebase Storage and get public URL
+  try {
+    const imgRef = ref(storage, `guide-images/${Date.now()}-${newImageFile.name}`);
+    await uploadBytes(imgRef, newImageFile);
+    const url = await getDownloadURL(imgRef);
+    setBuilderItems((items) => [
+      ...items,
+      { type: "image", src: url, caption: newImageCaption.trim() },
+    ]);
+    setNewImageFile(null);
+    setNewImageCaption("");
+    setBuilderAddMode("");
+  } catch (err) {
+    console.error("Error uploading image:", err);
+    alert("Image upload failed.");
+  }
+};
+
+const moveBuilderItem = (index, dir) => {
+  setBuilderItems((items) => {
+    const newIdx = dir === "up" ? index - 1 : index + 1;
+    if (newIdx < 0 || newIdx >= items.length) return items;
+    const copy = [...items];
+    const [moved] = copy.splice(index, 1);
+    copy.splice(newIdx, 0, moved);
+    return copy;
+  });
+};
+
+const removeBuilderItem = (index) =>
+  setBuilderItems((items) => items.filter((_, i) => i !== index));
+
 
   // === SECTION 13: CRUD – Landmarks =======================================
   const loadLandmarks = async () => {
@@ -956,10 +1034,6 @@ const buildAdditionalComments = () => {
   /* --- Mapbox Landmark Picker modal ------------------------------------- */
   const landmarkPicker = isPickingLandmark && (
     <MapboxLandmarkPicker
-      onSelect={({ lat, lon }) => {
-        setIsPickingLandmark(false);
-        setNewLandmarkCoords(`${lat}, ${lon}`);
-      }}
       onSelect={handleLandmarkSelect}
       onClose={() => setIsPickingLandmark(false)}
     />
@@ -1999,22 +2073,23 @@ return (
               <>
                 {/* --- Delete picker --- */}
                 <div style={{ marginBottom: 16 }}>
-                  <select
-                    className="input"
-                    value={selectedGuideId}
-                    onChange={(e) => setSelectedGuideId(e.target.value)}
-                    style={{ width: "100%", maxWidth: 400 }}
-                  >
-                    <option value="">Select a guide…</option>
-
-                    {[...guides]
-                      .sort((a, b) => a.title.localeCompare(b.title))
-                      .map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.title}
-                        </option>
-                      ))}
-                  </select>
+              <div style={{ marginBottom: 16 }}>
+                <select
+                  className="input"
+                  value={selectedGuideToDeleteId}
+                  onChange={(e) => setSelectedGuideToDeleteId(e.target.value)}
+                  style={{ width: "100%", maxWidth: 400 }}
+                >
+                  <option value="">Select a guide…</option>
+                  {[...guides]
+                    .sort((a, b) => a.title.localeCompare(b.title))
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
                 </div>
 
                 <button
