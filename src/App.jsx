@@ -1,6 +1,11 @@
-// === SECTION 01: Imports & App Setup =======================================
+// ==========================================================================
+//  MDS‑Assist  –  Single‑file rewrite (2025‑08‑02)
+//
+//  Numbered sections keep logic tightly scoped; no behavioural changes.
+// ==========================================================================
 import { useState, useEffect } from "react";
-import { db } from "./firebase";
+
+// === SECTION 01: Imports & Firebase Setup =================================
 import {
   collection,
   getDocs,
@@ -11,179 +16,155 @@ import {
   getDoc,
   setDoc,
 } from "firebase/firestore";
-
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-} from "firebase/storage";
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
 
-import { auth, googleProvider } from "./firebase";
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { db, auth, storage, googleProvider } from "./firebase";
 import MapboxLandmarkPicker from "./components/MapboxLandmarkPicker";
 
-import { storage } from "./firebase";   // ← grabs the storage we just exported
-
+// ==========================================================================
+//  App component
+// ==========================================================================
 function App() {
-// === SECTION 02: State – Screen & Core Fields =============================
+  // === SECTION 02: Navigation & UI Mode Selectors =========================
+  const [activeScreen, setActiveScreen] = useState("main"); // "main" | "guide" | "settings"
+  const [locMethod, setLocMethod] = useState("build");      // "build" | "landmark" | "ai"
+  const [buildMode, setBuildMode] = useState("manual");     // "manual" | "map"
+  const [isPickingLandmark, setIsPickingLandmark] = useState(false);
+  const [manualEntryMode, setManualEntryMode] = useState(false);
 
-// —— Mode & tab selectors ——————————————————————————
-const [activeScreen, setActiveScreen] = useState("main"); // "main" | "guide" | "settings"
-const [locMethod, setLocMethod] = useState("build");      // "build" | "landmark" | "ai"
-const [buildMode, setBuildMode] = useState("manual");     // "manual" | "map"
-const [isPickingLandmark, setIsPickingLandmark] = useState(false);
-const [manualEntryMode, setManualEntryMode] = useState(false);
+  /* --- Auto‑trigger Landmark / AI actions on tab switch ------------------ */
+  useEffect(() => {
+    if (locMethod === "landmark") {
+      autoDescribeNearest();
+    } else if (locMethod === "ai") {
+      handleGeoAnalyze();
+    }
+  }, [locMethod]);
 
-// —— Core build-location state ——————————————————————
-const [distanceTotal, setDistanceTotal] = useState(0);
-const [directionFromLandmark, setDirectionFromLandmark] = useState("");
-const [locationType, setLocationType] = useState("");     // "corner" | "edge" | …
+  // === SECTION 02A: Auth State & Handlers =================================
+  const [user, setUser] = useState(null);
 
-// —— UI / photo / weather etc. ——————————————————————
-const [sceneImage, setSceneImage] = useState(null);
-const [windDir, setWindDir] = useState("");
-const [windIntensity, setWindIntensity] = useState("");
-const [weather, setWeather] = useState("");
-const [notes, setNotes] = useState("");
-const [locationDesc, setLocationDesc] = useState("");
-const [additionalComments, setAdditionalComments] = useState("");
-const [aiComments, setAiComments] = useState("");
-const [geoLocationComment, setGeoLocationComment] = useState("");
-const [landmarkImage, setLandmarkImage] = useState(null);
-const [windRelative, setWindRelative] = useState("");
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return unsubscribe;
+  }, []);
 
-// —— GPS / timer ————————————————————————————————
-const [geoStatus, setGeoStatus] = useState("");
-const [gpsTimer, setGpsTimer] = useState(0);
-const [gpsWaitSec, setGpsWaitSec] = useState(15);
-useEffect(() => {
-  const stored = localStorage.getItem("gpsWaitSec");
-  if (stored !== null) setGpsWaitSec(Number(stored));
-}, []);
-const saveGpsWaitSec = () => {
-  localStorage.setItem("gpsWaitSec", gpsWaitSec);
-  alert("GPS wait saved.");
-};
+  const handleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error("Sign‑in error:", err);
+      alert("Failed to sign in");
+    }
+  };
 
-// —— Incident site & nearest-landmark helpers —————————
-const [incidentLat, setIncidentLat] = useState("");
-const [incidentLon, setIncidentLon] = useState("");
-const [incidentCoords, setIncidentCoords] = useState("");
-const [positionReport, setPositionReport] = useState("");
-const [landmarks, setLandmarks] = useState([]); // [{id, description, lat, lon}]
-const [nearestLandmarkReport, setNearestLandmarkReport] = useState("");
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Sign‑out error:", err);
+      alert("Failed to sign out");
+    }
+  };
 
-// —— Landmark builder helpers ——————————————————————
-const [editLandmarks, setEditLandmarks] = useState({});
-const [newLandmarkDesc, setNewLandmarkDesc] = useState("");
-const [newLandmarkCoords, setNewLandmarkCoords] = useState("");
+  // === SECTION 03: Location‑Builder State =================================
+  const [distanceTotal, setDistanceTotal] = useState(0);
+  const [directionFromLandmark, setDirectionFromLandmark] = useState("");
+  const [locationType, setLocationType] = useState("");
+  const [cornerDirection, setCornerDirection] = useState("");
+  const [edgeDirection, setEdgeDirection] = useState("");
+  const [landmark1, setLandmark1] = useState("");
+  const [landmark2, setLandmark2] = useState("");
 
-// —— Instrument note ——————————————————————————————
-const [instrumentNote, setInstrumentNote] = useState("");
+  // === SECTION 04: Incident & GPS State ===================================
+  const [incidentLat, setIncidentLat] = useState("");
+  const [incidentLon, setIncidentLon] = useState("");
+  const [incidentCoords, setIncidentCoords] = useState("");
+  const [positionReport, setPositionReport] = useState("");
+  const [nearestLandmarkReport, setNearestLandmarkReport] = useState("");
+  const [geoStatus, setGeoStatus] = useState("");
+  const [gpsTimer, setGpsTimer] = useState(0);
+  const [gpsWaitSec, setGpsWaitSec] = useState(15);
+  useEffect(() => {
+    const stored = localStorage.getItem("gpsWaitSec");
+    if (stored !== null) setGpsWaitSec(Number(stored));
+  }, []);
+  const saveGpsWaitSec = () => {
+    localStorage.setItem("gpsWaitSec", gpsWaitSec);
+    alert("GPS wait saved.");
+  };
 
-// —— Landmark-type detail fields ————————————————————
-const [cornerDirection, setCornerDirection] = useState("");
-const [edgeDirection, setEdgeDirection] = useState("");
-const [landmark1, setLandmark1] = useState("");
-const [landmark2, setLandmark2] = useState("");
+  // === SECTION 05: Comment / Weather / AI Image State =====================
+  const [sceneImage, setSceneImage] = useState(null);
+  const [windDir, setWindDir] = useState("");
+  const [windIntensity, setWindIntensity] = useState("");
+  const [weather, setWeather] = useState("");
+  const [notes, setNotes] = useState("");
+  const [locationDesc, setLocationDesc] = useState("");
+  const [additionalComments, setAdditionalComments] = useState("");
+  const [aiComments, setAiComments] = useState("");
+  const [windRelative, setWindRelative] = useState("");
+  const [instrumentNote, setInstrumentNote] = useState("");
+  const [landmarkImage, setLandmarkImage] = useState(null);
 
-// === SECTION 02A: Auth State & Handlers ===================================
-const [user, setUser] = useState(null);
-useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
-  return unsubscribe;
-}, []);
+  // === SECTION 06: Landmarks & Lists State =================================
+  const [landmarks, setLandmarks] = useState([]); // [{id, description, lat, lon}]
+  const [editLandmarks, setEditLandmarks] = useState({});
+  const [newLandmarkDesc, setNewLandmarkDesc] = useState("");
+  const [newLandmarkCoords, setNewLandmarkCoords] = useState("");
 
-const handleSignIn = async () => {
-  try {
-    await signInWithPopup(auth, googleProvider);
-  } catch (err) {
-    console.error("Sign-in error:", err);
-    alert("Failed to sign in");
-  }
-};
-
-const handleSignOut = async () => {
-  try {
-    await signOut(auth);
-  } catch (err) {
-    console.error("Sign-out error:", err);
-    alert("Failed to sign out");
-  }
-};
-
-// —— Auto-trigger Landmark / AI actions on tab switch —————————
-useEffect(() => {
-  if (locMethod === "landmark") {
-    autoDescribeNearest();
-  } else if (locMethod === "ai") {
-    handleGeoAnalyze();
-  }
-}, [locMethod]);
-
-// === SECTION 02B: Mapbox Landmark Picker Handler ===========================
-const handleLandmarkSelect = async ({ lat, lon }) => {
-  // Close the picker and record the chosen coords
-  setIsPickingLandmark(false);
-  setNewLandmarkCoords(`${lat}, ${lon}`);
-
-  try {
-    // Show GPS‐lock status and wait for a high‐accuracy fix
-    setGeoStatus("Waiting for GPS lock…");
-    const { latitude: curLat, longitude: curLon } =
-      await acquireAccuratePosition({ desiredAccuracy: 20 });
-    setGeoStatus("");
-
-    // Compute the distance in feet & the compass bearing
-    const meters  = haversine(curLat, curLon, lat, lon);
-    const feet    = Math.ceil((meters * 3.28084) / 10) * 10;
-    const bearing = computeBearing(curLat, curLon, lat, lon);
-    const rev     = (bearing + 180) % 360;
-    const dir     = bearingToCompass(rev);
-
-    // Update your state
-    setDistanceTotal(feet);
-    setDirectionFromLandmark(dir);
-  } catch (err) {
-    // On error (timeout or permission), clear status and alert
-    setGeoStatus("");
-    alert("Unable to get your location: " + err.message);
-  }
-};
-  // === SECTION 03: State – Phrase Manager ==================================
+  // === SECTION 07: Phrases State ==========================================
   const [savedPhrases, setSavedPhrases] = useState([]);
   const [selectedPhrases, setSelectedPhrases] = useState([]);
   const [newPhraseTitle, setNewPhraseTitle] = useState("");
   const [newPhraseContent, setNewPhraseContent] = useState("");
-  const [phraseMode, setPhraseMode] = useState("add"); // "add" or "delete"
+  const [phraseMode, setPhraseMode] = useState("add"); // "add" | "delete"
 
-  // === Guide State ===================================================
-  const [guideMode, setGuideMode] = useState("view"); // "view" | "create" | "delete"
-  const [guides, setGuides] = useState([]);           // all guides from Firestore
-  const [selectedGuideId, setSelectedGuideId] = useState(""); // ID chosen in View/Delete
+  // === SECTION 08: Guides State ===========================================
+  const [guideMode, setGuideMode]         = useState("view"); // "view" | "create" | "edit" | "delete"
+  const [guides, setGuides]               = useState([]);
+  const [selectedGuideId, setSelectedGuideId] = useState("");
   const [selectedGuideToDeleteId, setSelectedGuideToDeleteId] = useState("");
-  const [builderAddMode, setBuilderAddMode] = useState(""); // "" | "section" | "entry"
-
-  // --- Builder (Create Guide) ---
-  const [builderTitle, setBuilderTitle] = useState("");
-  const [builderItems, setBuilderItems] = useState([]); // [{type:"section"| "entry", ...}]
-  // temp fields while adding items
+  const [builderAddMode, setBuilderAddMode] = useState(""); // "" | "section" | "entry" | "image"
+  const [builderTitle, setBuilderTitle]   = useState("");
+  const [builderItems, setBuilderItems]   = useState([]);
   const [newSectionHeading, setNewSectionHeading] = useState("");
   const [newEntryFieldName, setNewEntryFieldName] = useState("");
   const [newEntryFieldValue, setNewEntryFieldValue] = useState("");
   const [newEntryComment, setNewEntryComment] = useState("");
-  // temp fields while adding IMAGE items
-  const [newImageFile, setNewImageFile] = useState(null);
+  const [newImageFile, setNewImageFile]   = useState(null);
   const [newImageCaption, setNewImageCaption] = useState("");
 
+  // === SECTION 09: Instruments State ======================================
+  const [instruments, setInstruments]             = useState([]);
+  const [editInstruments, setEditInstruments]     = useState({});
+  const [newInstrAbbr, setNewInstrAbbr]           = useState("");
+  const [newInstrBarcode, setNewInstrBarcode]     = useState("");
+  const [newInstrBatch, setNewInstrBatch]         = useState("");
+  const [newInstrExp, setNewInstrExp]             = useState("");
 
+  // === SECTION 10: Initial Load Effects ====================================
+  useEffect(() => {
+    loadPhrases();
+    loadGuides();
+    loadLandmarks();
+    loadIncidentSite();
+  }, []);
 
-  // === SECTION 04: CRUD Helpers – Phrases ===================================
+  /* ---------------------------------------------------------------------- */
+  /*                          Firestore CRUD blocks                         */
+  /* ---------------------------------------------------------------------- */
+
+  // === SECTION 11: CRUD – Phrases =========================================
   const loadPhrases = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, "phrases"));
-      const phrases = querySnapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setSavedPhrases(phrases);
+      const snap = await getDocs(collection(db, "phrases"));
+      setSavedPhrases(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error("Error loading phrases:", err);
     }
@@ -221,438 +202,11 @@ const handleLandmarkSelect = async ({ lat, lon }) => {
     );
   };
 
-  // === SECTION 04A: CRUD Helpers – Incident Site ============================
-
-  // Load the incident‐site coordinates from Firestore
-  const loadIncidentSite = async () => {
-    try {
-      const docRef = doc(db, "settings", "incidentSite");
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const { lat, lon } = docSnap.data();
-        setIncidentLat(lat);
-        setIncidentLon(lon);
-      }
-    } catch (err) {
-      console.error("❌ loadIncidentSite error:", err);
-    }
-  };
-
-  // When lat/lon arrive, populate the single‐field input (stripping stray quotes)
-  useEffect(() => {
-    if (incidentLat !== "" && incidentLon !== "") {
-      const cleanLat = String(incidentLat).replace(/['"]/g, "");
-      const cleanLon = String(incidentLon).replace(/['"]/g, "");
-      setIncidentCoords(`${cleanLat}, ${cleanLon}`);
-    }
-  }, [incidentLat, incidentLon]);
-
-  // Save the incident‐site coordinates to Firestore
-  const saveIncidentSite = async () => {
-    try {
-      const docRef = doc(db, "settings", "incidentSite");
-      await setDoc(docRef, {
-        lat: incidentLat,
-        lon: incidentLon,
-      });
-      alert("Incident site saved.");
-    } catch (err) {
-      console.error("Error saving incident site:", err);
-      alert("Failed to save incident site.");
-    }
-  };
-
-  // === SECTION 04A-2: Helpers – Save Combined Incident Coords ============
-  const handleSaveIncidentCoords = async () => {
-    // split at comma
-    const parts = incidentCoords.split(",");
-    if (parts.length !== 2) {
-      return alert("Enter both lat and lon, separated by a comma.");
-    }
-    const lat = parseFloat(parts[0].trim());
-    const lon = parseFloat(parts[1].trim());
-    if (isNaN(lat) || isNaN(lon)) {
-      return alert("Invalid format. Example: 43.5844120, -116.1939362");
-    }
-
-    try {
-      const docRef = doc(db, "settings", "incidentSite");
-      await setDoc(docRef, { lat, lon });
-      setIncidentLat(lat);
-      setIncidentLon(lon);
-      alert("Incident site saved.");
-    } catch (err) {
-      console.error("Error saving incident site:", err);
-      alert("Failed to save incident site.");
-    }
-  };
-
-// === SECTION 04B-1: Helper – Acquire Accurate Position ===
-
-// === SECTION 04B-1a: Helper – GPS Timer Controls ===
-let timerIntervalId = null;
-
-const startGpsTimer = (duration) => {
-  setGpsTimer(duration);
-  timerIntervalId = setInterval(() => {
-    setGpsTimer((t) => {
-      if (t <= 1) {
-        clearInterval(timerIntervalId);
-        return 0;
-      }
-      return t - 1;
-    });
-  }, 1000);
-};
-
-const stopGpsTimer = () => {
-  clearInterval(timerIntervalId);
-  setGpsTimer(0);
-};
-
-// === SECTION 04B-1b: Helper – Acquire Accurate Position ===================
-const acquireAccuratePosition = ({
-  timeout,          // optional ms; defaults to gpsWaitSec * 1000
-  desiredAccuracy = 20
-} = {}) => {
-  // fall back to slider value if timeout not provided
-  const timeoutMs = timeout ?? gpsWaitSec * 1000;
-
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("Geolocation not supported."));
-      return;
-    }
-
-    let best = null;
-    const startTime = Date.now();
-
-    // on-screen countdown
-    startGpsTimer(Math.ceil(timeoutMs / 1000));
-    console.log(`>>> GPS acquisition started (max ${timeoutMs / 1000}s)`);
-
-    // watchPosition: record best accuracy, never resolve early
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`  [+${elapsed}s] accuracy=${accuracy}m`);
-        if (!best || accuracy < best.accuracy) {
-          best = { latitude, longitude, accuracy };
-        }
-      },
-      (err) => {
-        // bail only on permission-denied (1) or explicit timeout (3)
-        if (err.code === 1 || err.code === 3) {
-          cleanup();
-          reject(err);
-        } else {
-          console.warn("Ignored non-fatal GPS error:", err);
-        }
-      },
-      { enableHighAccuracy: true, maximumAge: 0 }
-    );
-
-    // timeout handler (wait window elapsed)
-    const timer = setTimeout(() => {
-      cleanup();
-
-      if (best) {
-        console.log(`→ Timeout; best accuracy was ${best.accuracy}m`);
-        resolve({
-          latitude: best.latitude,
-          longitude: best.longitude
-        });
-      } else {
-        console.log("→ No GPS fix; falling back to getCurrentPosition");
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            resolve({
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude
-            });
-          },
-          (e) => {
-            reject(
-              new Error("Fallback getCurrentPosition failed: " + e.message)
-            );
-          },
-          { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-        );
-      }
-    }, timeoutMs);
-
-    function cleanup() {
-      stopGpsTimer();
-      clearTimeout(timer);
-      navigator.geolocation.clearWatch(watchId);
-    }
-  });
-};
-
-// === SECTION 04B: Helpers – Distance, Bearing & Report =====================
-
-// Convert degrees → one of 16 compass points
-const bearingToCompass = (deg) => {
-  const points = [
-    "N","NNE","NE","ENE","E","ESE","SE","SSE",
-    "S","SSW","SW","WSW","W","WNW","NW","NNW"
-  ];
-  const idx = Math.floor(((deg + 11.25) % 360) / 22.5);
-  return points[idx];
-};
-
-// Haversine distance in meters
-const haversine = (lat1, lon1, lat2, lon2) => {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371000; // earth radius in m
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-// Compute initial bearing from point A → B
-const computeBearing = (lat1, lon1, lat2, lon2) => {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const toDeg = (v) => (v * 180) / Math.PI;
-  const φ1 = toRad(lat1), φ2 = toRad(lat2);
-  const Δλ = toRad(lon2 - lon1);
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x =
-    Math.cos(φ1) * Math.sin(φ2) -
-    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-};
-
-// Round & format the distance, choose feet or miles
-const formatDistance = (meters) => {
-  const feet = meters * 3.28084;
-  if (feet >= 5280) {
-    const mi = feet / 5280;
-    return `${mi.toFixed(1)} mi`;
-  } else {
-    // round *up* to next 10 ft
-    const rounded = Math.ceil(feet / 10) * 10;
-    return `${rounded} ft`;
-  }
-};
-
-// Get current GPS, compute & set report
-const handleReportPosition = async () => {
-  if (!navigator.geolocation) {
-    return alert("Geolocation not supported.");
-  }
-  if (!incidentLat || !incidentLon) {
-    return alert("Please save an incident site first.");
-  }
-
-  try {
-    setGeoStatus("Waiting for GPS lock…");
-    const { latitude: curLat, longitude: curLon } =
-      await acquireAccuratePosition({
-        timeout: 15000,
-        desiredAccuracy: 20
-      });
-    setGeoStatus("");
-
-    // Parse saved incident‐site coords
-    const targetLat = parseFloat(incidentLat);
-    const targetLon = parseFloat(incidentLon);
-    if (isNaN(targetLat) || isNaN(targetLon)) {
-      return alert("Invalid incident‐site coordinates.");
-    }
-
-    // Your existing distance & bearing calls
-    const dist = haversine(curLat, curLon, targetLat, targetLon);
-    const bear = computeBearing(curLat, curLon, targetLat, targetLon);
-    const dir = bearingToCompass(bear);
-    const distStr = formatDistance(dist);
-
-    setPositionReport(`${distStr} ${dir} of incident site`);
-  } catch (err) {
-    setGeoStatus("");
-    alert("Unable to get your position: " + err.message);
-  }
-};
-
-// === SECTION 04C: Helpers – Wind ↔ Incident Site ===========================
-
-// Smallest angle difference (0-180 deg)
-const angleDiff = (a, b) => {
-  const d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
-};
-
-const handleWindRelative = () => {
-  if (!navigator.geolocation) {
-    alert("Geolocation not supported."); return;
-  }
-  if (!incidentLat || !incidentLon) {
-    alert("Please save an incident site first."); return;
-  }
-  if (!windDir) {
-    alert("Please select ‘Wind from’ first."); return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    ({ coords }) => {
-      const curLat = coords.latitude;
-      const curLon = coords.longitude;
-
-      const tLat = parseFloat(incidentLat);
-      const tLon = parseFloat(incidentLon);
-      if (isNaN(tLat) || isNaN(tLon)) {
-        alert("Invalid incident-site coordinates."); return;
-      }
-
-      const meters  = haversine(tLat, tLon, curLat, curLon);
-      const bearing = computeBearing(tLat, tLon, curLat, curLon);
-      const dir     = bearingToCompass(bearing);
-      const distStr = `~${formatDistance(meters)}`;
-
-      // wind bearings
-      const map = { N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315 };
-      const windFrom = map[windDir];
-      const downwind = (windFrom + 180) % 360;
-
-      let rel = "crosswind";
-      if (angleDiff(bearing, windFrom) <= 22.5) rel = "upwind";
-      else if (angleDiff(bearing, downwind) <= 22.5) rel = "downwind";
-
-      setWindRelative(`${distStr} ${dir} and ${rel} of incident site`);
-    },
-    (err) => alert("Unable to get your location: " + err.message)
-  );
-};
-
-// === SECTION 04E: Helpers – Auto‐Describe Nearest Landmark ============
-const autoDescribeNearest = async () => {
-  if (!navigator.geolocation) {
-    return alert("Geolocation not supported.");
-  }
-  if (!landmarks.length) {
-    return alert("No landmarks defined.");
-  }
-
-  try {
-    // Kick off high-accuracy GPS fix (honors slider wait time)
-    setGeoStatus("Waiting for GPS lock…");
-    const { latitude: curLat, longitude: curLon } =
-      await acquireAccuratePosition({ desiredAccuracy: 20 });
-    setGeoStatus("");
-
-    // Find the closest landmark
-    let best = null;
-    let minDist = Infinity;
-    landmarks.forEach((lm) => {
-      const d = haversine(curLat, curLon, lm.lat, lm.lon);
-      if (d < minDist) {
-        minDist = d;
-        best = lm;
-      }
-    });
-    if (!best) return;
-
-    // Compute bearing & distance
-    const bearing = computeBearing(best.lat, best.lon, curLat, curLon);
-    const dir     = bearingToCompass(bearing);
-    const distStr = formatDistance(minDist);
-
-    // Update the report
-    setNearestLandmarkReport(`~${distStr} ${dir} of ${best.description}`);
-  } catch (err) {
-    setGeoStatus("");
-    alert("Unable to get your position: " + err.message);
-  }
-};
-
-
-// === SECTION 04F: CRUD Helpers – Instruments =============================
-
-// ── State ----------------------------------------------------------------
-const [instruments, setInstruments] = useState([]);          // [{ id, abbr, barcode, batch, exp }]
-const [editInstruments, setEditInstruments] = useState({});  // temp edits keyed by id
-
-// temp inputs for the “add new” row
-const [newInstrAbbr,    setNewInstrAbbr]    = useState("");
-const [newInstrBarcode, setNewInstrBarcode] = useState("");
-const [newInstrBatch,   setNewInstrBatch]   = useState("");
-const [newInstrExp,     setNewInstrExp]     = useState("");
-
-// ── Load all --------------------------------------------------------------
-const loadInstruments = async () => {
-  try {
-    const snap = await getDocs(collection(db, "instruments"));
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    setInstruments(list);
-  } catch (err) {
-    console.error("Error loading instruments:", err);
-  }
-};
-
-// ── Add new ---------------------------------------------------------------
-const addInstrument = async (abbr, barcode, batch, exp) => {
-  try {
-    await addDoc(collection(db, "instruments"), { abbr, barcode, batch, exp });
-    loadInstruments();
-  } catch (err) {
-    console.error("Error adding instrument:", err);
-  }
-};
-
-// ── Update existing -------------------------------------------------------
-const updateInstrument = async (id, abbr, barcode, batch, exp) => {
-  try {
-    await updateDoc(doc(db, "instruments", id), { abbr, barcode, batch, exp });
-    loadInstruments();
-  } catch (err) {
-    console.error("Error updating instrument:", err);
-  }
-};
-
-// ── Delete ---------------------------------------------------------------
-const deleteInstrument = async (id) => {
-  try {
-    await deleteDoc(doc(db, "instruments", id));
-    loadInstruments();
-  } catch (err) {
-    console.error("Error deleting instrument:", err);
-  }
-};
-
-// Copy barcode (single tap in Settings)
-const copyInstrumentBarcode = (code) => navigator.clipboard.writeText(code);
-
-// Build “Batch/QC … Exp date …” note for UR / Gtc buttons
-const makeInstrumentNote = (abbr) => {
-  const inst = instruments.find((i) => i.abbr === abbr);
-  if (!inst) return "";
-
-  // UR uses “Batch”; Gtc uses “QC”
-  const label = abbr === "UR" ? "Batch number" : "QC number";
-
-  return `${label}: ${inst.batch || ""}\nExp date: ${inst.exp || ""}`.trim();
-};
-
-// ── Effect – load once on mount -----------------------------------------
-useEffect(() => {
-  loadInstruments();
-}, []);
-
-
-
-  /* --- Guide helpers ------------------------------------------------ */
+  // === SECTION 12: CRUD – Guides ==========================================
   const loadGuides = async () => {
     try {
       const snap = await getDocs(collection(db, "guides"));
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setGuides(list);
+      setGuides(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error("Error loading guides:", err);
     }
@@ -666,7 +220,6 @@ useEffect(() => {
         items: builderItems,
         timestamp: Date.now(),
       });
-      // reset builder state
       setBuilderTitle("");
       setBuilderItems([]);
       loadGuides();
@@ -688,53 +241,30 @@ useEffect(() => {
   };
 
   const updateGuide = async (guideId) => {
-  if (!guideId || !builderTitle.trim() || !builderItems.length) return;
-  try {
-    await updateDoc(doc(db, "guides", guideId), {
-      title: builderTitle.trim(),
-      items: builderItems,
-      timestamp: Date.now(),
-    });
-    loadGuides();
-    alert("Guide updated.");
-    // Optionally reset builder state or switch modes:
-    // setGuideMode("view");
-    // setBuilderTitle("");
-    // setBuilderItems([]);
-    // setSelectedGuideId("");
-  } catch (err) {
-    console.error("Error updating guide:", err);
-  }
-};
-
-  /* --- Image upload helper (Firebase Storage) ---------------------- */
-  const uploadImage = async (file) => {
-    if (!file) return null;
+    if (!guideId || !builderTitle.trim() || !builderItems.length) return;
     try {
-      const imgRef = ref(storage, `guide-images/${Date.now()}-${file.name}`);
-      await uploadBytes(imgRef, file);
-      const url = await getDownloadURL(imgRef);
-      return url;                // caller will push this into builderItems
+      await updateDoc(doc(db, "guides", guideId), {
+        title: builderTitle.trim(),
+        items: builderItems,
+        timestamp: Date.now(),
+      });
+      loadGuides();
+      alert("Guide updated.");
     } catch (err) {
-      console.error("Error uploading image:", err);
-      alert("Image upload failed.");
-      return null;
+      console.error("Error updating guide:", err);
     }
   };
 
-  // === SECTION 04D: CRUD Helpers – Landmarks =============================
-
+  // === SECTION 13: CRUD – Landmarks =======================================
   const loadLandmarks = async () => {
     try {
       const snap = await getDocs(collection(db, "landmarks"));
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setLandmarks(list);
+      setLandmarks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error("Error loading landmarks:", err);
     }
-  };  
+  };
 
-  // Add a new landmark
   const addLandmark = async (description, lat, lon) => {
     try {
       await addDoc(collection(db, "landmarks"), { description, lat, lon });
@@ -744,7 +274,6 @@ useEffect(() => {
     }
   };
 
-  // Update an existing landmark
   const updateLandmark = async (id, description, lat, lon) => {
     try {
       await updateDoc(doc(db, "landmarks", id), { description, lat, lon });
@@ -754,7 +283,6 @@ useEffect(() => {
     }
   };
 
-  // Delete a landmark
   const deleteLandmark = async (id) => {
     try {
       await deleteDoc(doc(db, "landmarks", id));
@@ -764,161 +292,378 @@ useEffect(() => {
     }
   };
 
-  // === SECTION 05: Effect – Load Saved Phrases on Mount =====================
-  useEffect(() => {
-    loadPhrases();
-  }, []);
-
-  // Load guides once on mount
-  useEffect(() => {
-    loadGuides();
-  }, []);
-
-    // Pre-fill builder when a guide is selected in Edit mode
-  useEffect(() => {
-    if (guideMode !== "edit") return;
-    const g = guides.find((gg) => gg.id === selectedGuideId);
-    if (g) {
-      setBuilderTitle(g.title || "");
-      setBuilderItems(g.items || []);
-    } else {
-      setBuilderTitle("");
-      setBuilderItems([]);
+  // === SECTION 14: CRUD – Instruments =====================================
+  const loadInstruments = async () => {
+    try {
+      const snap = await getDocs(collection(db, "instruments"));
+      setInstruments(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error("Error loading instruments:", err);
     }
+  };
+  useEffect(() => { loadInstruments(); }, []);
 
-    setBuilderAddMode(""); // reset add-mode whenever selection changes
-  }, [guideMode, selectedGuideId, guides]);
-
-
-    // === SECTION 05A: Effect – Load Incident Site on Mount ==================
-    useEffect(() => {
-      console.log("▶️ useEffect loadIncidentSite firing");
-      loadIncidentSite();
-    }, []);
-
-    // === Load landmarks once on mount ===
-    useEffect(() => {
-      loadLandmarks();
-    }, []);
-
-  // === SECTION 06: State – Location Builder =================================
-  // const [distanceTotal, setDistanceTotal] = useState(0);
-  // const [directionFromLandmark, setDirectionFromLandmark] = useState("");
-  // const [locationType, setLocationType] = useState("");
-  // const [cornerDirection, setCornerDirection] = useState("");
-  // const [edgeDirection, setEdgeDirection] = useState("");
-  // const [landmark1, setLandmark1] = useState("");
- // const [landmark2, setLandmark2] = useState("");
-
-  // === SECTION 07: Helpers – Geolocation Storage & Retrieval ===============
-  const handleAttachToLocation = async () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation not supported.");
-      return;
+  const addInstrument = async (abbr, barcode, batch, exp) => {
+    try {
+      await addDoc(collection(db, "instruments"), { abbr, barcode, batch, exp });
+      loadInstruments();
+    } catch (err) {
+      console.error("Error adding instrument:", err);
     }
-
-try {
-  setGeoStatus("Waiting for GPS lock…");
-  const { latitude, longitude } =
-    await acquireAccuratePosition({ timeout: 15000, desiredAccuracy: 20 });
-  setGeoStatus("");
-  // …then feed latitude/longitude into your reverse-geocode + AI logic…
-} catch (err) {
-  setGeoStatus("");
-  setLocationDesc("Unable to get location: " + err.message);
-}
   };
 
-  const handleRetrieveFromLocation = async () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation not supported.");
-      return;
+  const updateInstrument = async (id, abbr, barcode, batch, exp) => {
+    try {
+      await updateDoc(doc(db, "instruments", id), { abbr, barcode, batch, exp });
+      loadInstruments();
+    } catch (err) {
+      console.error("Error updating instrument:", err);
     }
+  };
 
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      const { latitude, longitude } = position.coords;
-      try {
-        const snapshot = await getDocs(collection(db, "locations"));
-        const entries = snapshot.docs.map((d) => d.data());
-        if (!entries.length) return alert("No stored locations found.");
+  const deleteInstrument = async (id) => {
+    try {
+      await deleteDoc(doc(db, "instruments", id));
+      loadInstruments();
+    } catch (err) {
+      console.error("Error deleting instrument:", err);
+    }
+  };
 
-        const distance = (a, b) => {
-          const toRad = (x) => (x * Math.PI) / 180;
-          const R = 6371e3;
-          const φ1 = toRad(a.lat);
-          const φ2 = toRad(b.lat);
-          const Δφ = toRad(b.lat - a.lat);
-          const Δλ = toRad(b.lon - a.lon);
-          const aVal =
-            Math.sin(Δφ / 2) ** 2 +
-            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-          const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
-          return R * c;
-        };
+  const copyInstrumentBarcode = (code) => navigator.clipboard.writeText(code);
+  const makeInstrumentNote = (abbr) => {
+    const inst = instruments.find((i) => i.abbr === abbr);
+    if (!inst) return "";
+    const label = abbr === "UR" ? "Batch number" : "QC number";
+    return `${label}: ${inst.batch || ""}\nExp date: ${inst.exp || ""}`.trim();
+  };
 
-        let closest = null;
-        let minDist = Infinity;
+  // === SECTION 15: Incident Site Helpers ==================================
+  const loadIncidentSite = async () => {
+    try {
+      const docRef = doc(db, "settings", "incidentSite");
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const { lat, lon } = snap.data();
+        setIncidentLat(lat);
+        setIncidentLon(lon);
+      }
+    } catch (err) {
+      console.error("loadIncidentSite error:", err);
+    }
+  };
 
-        for (const entry of entries) {
-          const d = distance({ lat: latitude, lon: longitude }, entry);
-          if (d < minDist) {
-            minDist = d;
-            closest = entry;
+  useEffect(() => {
+    if (incidentLat !== "" && incidentLon !== "") {
+      const cleanLat = String(incidentLat).replace(/['"]/g, "");
+      const cleanLon = String(incidentLon).replace(/['"]/g, "");
+      setIncidentCoords(`${cleanLat}, ${cleanLon}`);
+    }
+  }, [incidentLat, incidentLon]);
+
+  const handleSaveIncidentCoords = async () => {
+    const parts = incidentCoords.split(",");
+    if (parts.length !== 2) {
+      return alert("Enter lat and lon separated by a comma.");
+    }
+    const lat = parseFloat(parts[0].trim());
+    const lon = parseFloat(parts[1].trim());
+    if (isNaN(lat) || isNaN(lon)) {
+      return alert("Invalid format. Example: 43.5844120, -116.1939362");
+    }
+    try {
+      await setDoc(doc(db, "settings", "incidentSite"), { lat, lon });
+      setIncidentLat(lat);
+      setIncidentLon(lon);
+      alert("Incident site saved.");
+    } catch (err) {
+      console.error("Error saving incident site:", err);
+      alert("Failed to save incident site.");
+    }
+  };
+
+  // === SECTION 16: Geolocation Utilities ==================================
+  let timerIntervalId = null;
+  const startGpsTimer = (duration) => {
+    setGpsTimer(duration);
+    timerIntervalId = setInterval(() => {
+      setGpsTimer((t) => {
+        if (t <= 1) {
+          clearInterval(timerIntervalId);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+  };
+  const stopGpsTimer = () => {
+    clearInterval(timerIntervalId);
+    setGpsTimer(0);
+  };
+
+  const acquireAccuratePosition = ({
+    timeout,
+    desiredAccuracy = 20,
+  } = {}) => {
+    const timeoutMs = timeout ?? gpsWaitSec * 1000;
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation not supported."));
+        return;
+      }
+      let best = null;
+      const startTime = Date.now();
+      startGpsTimer(Math.ceil(timeoutMs / 1000));
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          if (!best || accuracy < best.accuracy) {
+            best = { latitude, longitude, accuracy };
           }
-        }
-
-        if (minDist < 50 && closest) {
-          setLocationDesc(closest.locationDesc);
-          setAdditionalComments(closest.additionalComments);
-          alert("Fields retrieved from nearby location.");
+        },
+        (err) => {
+          if (err.code === 1 || err.code === 3) {
+            cleanup();
+            reject(err);
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 0 }
+      );
+      const timer = setTimeout(() => {
+        cleanup();
+        if (best) {
+          resolve({ latitude: best.latitude, longitude: best.longitude });
         } else {
-          alert("No nearby location found (within 50 meters).");
+          navigator.geolocation.getCurrentPosition(
+            (pos) =>
+              resolve({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              }),
+            (e) =>
+              reject(new Error("Fallback getCurrentPosition failed: " + e.message)),
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+          );
         }
-      } catch (err) {
-        console.error("Error retrieving locations:", err);
-        alert("Failed to retrieve location.");
+      }, timeoutMs);
+      function cleanup() {
+        stopGpsTimer();
+        clearTimeout(timer);
+        navigator.geolocation.clearWatch(watchId);
       }
     });
   };
 
-  // === SECTION 08: Helpers – Image Upload & AI Calls ========================
-  const handleImageUpload = (e, setImage) => {
+  /* --- Distance & bearing helpers --------------------------------------- */
+  const toRad = (v) => (v * Math.PI) / 180;
+  const toDeg = (v) => (v * 180) / Math.PI;
+  const haversine = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+  const computeBearing = (lat1, lon1, lat2, lon2) => {
+    const φ1 = toRad(lat1),
+      φ2 = toRad(lat2),
+      Δλ = toRad(lon2 - lon1);
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x =
+      Math.cos(φ1) * Math.sin(φ2) -
+      Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  };
+  const bearingToCompass = (deg) => {
+    const points = [
+      "N","NNE","NE","ENE","E","ESE","SE","SSE",
+      "S","SSW","SW","WSW","W","WNW","NW","NNW"
+    ];
+    return points[Math.floor(((deg + 11.25) % 360) / 22.5)];
+  };
+  const formatDistance = (meters) => {
+    const feet = meters * 3.28084;
+    return feet >= 5280 ? `${(feet / 5280).toFixed(1)} mi`
+                        : `${Math.ceil(feet / 10) * 10} ft`;
+  };
+
+  // === SECTION 17: Position & Wind Helpers ================================
+  const handleReportPosition = async () => {
+    if (!incidentLat || !incidentLon) {
+      return alert("Please save an incident site first.");
+    }
+    try {
+      setGeoStatus("Waiting for GPS lock…");
+      const { latitude: curLat, longitude: curLon } =
+        await acquireAccuratePosition({ timeout: 15000 });
+      setGeoStatus("");
+
+      const dist = haversine(curLat, curLon, incidentLat, incidentLon);
+      const bear = computeBearing(curLat, curLon, incidentLat, incidentLon);
+      setPositionReport(`${formatDistance(dist)} ${bearingToCompass(bear)} of incident site`);
+    } catch (err) {
+      setGeoStatus("");
+      alert("Unable to get your position: " + err.message);
+    }
+  };
+
+  const angleDiff = (a, b) => {
+    const d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
+  };
+
+  const handleWindRelative = () => {
+    if (!incidentLat || !incidentLon) {
+      alert("Please save an incident site first."); return;
+    }
+    if (!windDir) {
+      alert("Select ‘Wind from’ first."); return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const meters  = haversine(incidentLat, incidentLon, coords.latitude, coords.longitude);
+        const bearing = computeBearing(incidentLat, incidentLon, coords.latitude, coords.longitude);
+        const dir     = bearingToCompass(bearing);
+        const distStr = `~${formatDistance(meters)}`;
+
+        const map     = { N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315 };
+        const windFrom = map[windDir];
+        const downwind = (windFrom + 180) % 360;
+
+        let rel = "crosswind";
+        if (angleDiff(bearing, windFrom) <= 22.5) rel = "upwind";
+        else if (angleDiff(bearing, downwind) <= 22.5) rel = "downwind";
+
+        setWindRelative(`${distStr} ${dir} and ${rel} of incident site`);
+      },
+      (err) => alert("Unable to get your location: " + err.message)
+    );
+  };
+
+  const autoDescribeNearest = async () => {
+    if (!landmarks.length) return alert("No landmarks defined.");
+    try {
+      setGeoStatus("Waiting for GPS lock…");
+      const { latitude, longitude } = await acquireAccuratePosition();
+      setGeoStatus("");
+      let best = null, minDist = Infinity;
+      landmarks.forEach((lm) => {
+        const d = haversine(latitude, longitude, lm.lat, lm.lon);
+        if (d < minDist) [minDist, best] = [d, lm];
+      });
+      if (!best) return;
+      const bearing = computeBearing(best.lat, best.lon, latitude, longitude);
+      setNearestLandmarkReport(
+        `~${formatDistance(minDist)} ${bearingToCompass(bearing)} of ${best.description}`
+      );
+    } catch (err) {
+      setGeoStatus("");
+      alert("Unable to get your position: " + err.message);
+    }
+  };
+
+// === SECTION 17B: Attach & Retrieve Fields at Location =====================
+/**
+ * Attach the current field data to this GPS position.
+ */
+const handleAttachToLocation = async () => {
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported.");
+    return;
+  }
+  try {
+    setGeoStatus("Waiting for GPS lock…");
+    const { latitude, longitude } =
+      await acquireAccuratePosition({ timeout: 15000, desiredAccuracy: 20 });
+    setGeoStatus("");
+    // …then feed latitude/longitude into your reverse-geocode + AI logic…
+  } catch (err) {
+    setGeoStatus("");
+    setLocationDesc("Unable to get location: " + err.message);
+  }
+};
+
+/**
+ * Find stored fields nearest your current GPS position and load them.
+ */
+const handleRetrieveFromLocation = async () => {
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async (position) => {
+    const { latitude, longitude } = position.coords;
+    try {
+      const snapshot = await getDocs(collection(db, "locations"));
+      const entries = snapshot.docs.map((d) => d.data());
+      if (!entries.length) return alert("No stored locations found.");
+
+      // Find the closest entry
+      const distance = (a, b) => {
+        const toRad = (x) => (x * Math.PI) / 180;
+        const R = 6371e3;
+        const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
+        const Δφ = toRad(b.lat - a.lat), Δλ = toRad(b.lon - a.lon);
+        const aVal =
+          Math.sin(Δφ / 2) ** 2 +
+          Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1 - aVal));
+        return R * c;
+      };
+
+      let closest = null, minDist = Infinity;
+      for (const entry of entries) {
+        const d = distance({ lat: latitude, lon: longitude }, entry);
+        if (d < minDist) {
+          minDist = d;
+          closest = entry;
+        }
+      }
+
+      if (minDist < 50 && closest) {
+        setLocationDesc(closest.locationDesc);
+        setAdditionalComments(closest.additionalComments);
+        alert("Fields retrieved from nearby location.");
+      } else {
+        alert("No nearby location found (within 50 meters).");
+      }
+    } catch (err) {
+      console.error("Error retrieving locations:", err);
+      alert("Failed to retrieve location.");
+    }
+  });
+};
+
+
+  // === SECTION 18: Image Upload & OpenAI Calls ============================
+  const handleImageUpload = (e, setter) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setImage(reader.result);
+    reader.onload = () => setter(reader.result);
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = async () => {
-    const messages = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `
-You are provided with a site image.
+  const handleSceneAnalyze = async () => {
+    if (!sceneImage) return;
+    const messages = [{
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `You are provided with a site image.
 
-Your task is to describe what is visibly happening using short factual phrases.
-
-Focus only on primary objects and immediate terrain (e.g. vehicles, equipment, workers, ground conditions).
-
-Ignore background elements such as trees, buildings, or distant scenery.
-
-Do NOT infer weather or wind — those are handled separately in the app.
-
-Do NOT narrate or speculate. Just describe what is directly visible in the image.
-
-Format example: "Excavator on site. Workers in high-vis. Pile of piping near trench."`,
-          },
-          ...(sceneImage
-            ? [{ type: "image_url", image_url: { url: sceneImage } }]
-            : []),
-        ],
-      },
-    ];
-
+Describe visible primary objects and immediate terrain in short factual phrases.
+Ignore background scenery. Do NOT infer weather or wind.`
+        },
+        { type: "image_url", image_url: { url: sceneImage } },
+      ],
+    }];
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -928,10 +673,8 @@ Format example: "Excavator on site. Workers in high-vis. Pile of piping near tre
         },
         body: JSON.stringify({ model: "gpt-4o", messages }),
       });
-
       const data = await res.json();
-      const content = data.choices?.[0]?.message?.content || "No response";
-      setAiComments(content.trim());
+      setAiComments(data.choices?.[0]?.message?.content?.trim() || "");
     } catch (err) {
       setAiComments("Error: " + err.message);
     }
@@ -939,33 +682,16 @@ Format example: "Excavator on site. Workers in high-vis. Pile of piping near tre
 
   const handleAnalyzeLandmarkImage = async () => {
     if (!landmarkImage) return;
-
-    const messages = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `
-You are provided with a photo showing a single landmark such as a utility pole, sign, or gate marker.
-
-Your task is to:
-- Identify the type of object (e.g., utility pole, gate marker, sign)
-- Include any visible ID or label on it
-- Return both as a single short phrase
-
-Examples:
-- "Utility pole 79557B"
-- "Sign: No Trespassing"
-- "Gate marker 3A"
-
-Do not describe surroundings or speculate. Only report what is clearly visible on the object itself.`,
-          },
-          { type: "image_url", image_url: { url: landmarkImage } },
-        ],
-      },
-    ];
-
+    const messages = [{
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `Identify the object and any ID visible, e.g. “Utility pole 79557B”.`
+        },
+        { type: "image_url", image_url: { url: landmarkImage } },
+      ],
+    }];
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -975,77 +701,84 @@ Do not describe surroundings or speculate. Only report what is clearly visible o
         },
         body: JSON.stringify({ model: "gpt-4o", messages }),
       });
-
       const data = await res.json();
-      const content = data.choices?.[0]?.message?.content || "";
-      if (content) setLandmark1(content.trim());
+      const content = data.choices?.[0]?.message?.content?.trim();
+      if (content) setLandmark1(content);
     } catch (err) {
       alert("Error analyzing image: " + err.message);
     }
   };
 
-// === SECTION 09: Helpers – Reverse Geocode & AI Location ==================
-const handleGeoAnalyze = async () => {
-  if (!navigator.geolocation) {
-    setLocationDesc("Geolocation not supported.");
-    return;
-  }
+  // === SECTION 19: Derived Builders =======================================
+  const buildLocationDescription = () => {
+    if (!locationType || !directionFromLandmark) return locationDesc || "";
+    let base = "";
+    switch (locationType) {
+      case "corner":
+        base =
+          cornerDirection && landmark1
+            ? `~${distanceTotal} ft ${directionFromLandmark} of ${cornerDirection} corner of ${landmark1}`
+            : "";
+        break;
+      case "edge":
+        base =
+          edgeDirection && landmark1
+            ? `~${distanceTotal} ft ${directionFromLandmark} of ${edgeDirection} edge of ${landmark1}`
+            : "";
+        break;
+      case "intersection":
+        base =
+          landmark1 && landmark2
+            ? `~${distanceTotal} ft ${directionFromLandmark} of intersection of ${landmark1} and ${landmark2}`
+            : "";
+        break;
+      default:
+        base = landmark1
+          ? `~${distanceTotal} ft ${directionFromLandmark} of ${landmark1}`
+          : "";
+    }
+    return locationDesc ? `${base}. ${locationDesc}` : base;
+  };
 
-  try {
-    // Use slider value via acquireAccuratePosition (no hard-coded timeout)
-    setGeoStatus("Waiting for GPS lock…");
-    const { latitude, longitude } = await acquireAccuratePosition({
-      desiredAccuracy: 20           // timeout comes from gpsWaitSec
-    });
-    setGeoStatus("");
+  const capitalize = (t) => t ? t[0].toUpperCase() + t.slice(1) : "";
+  const weatherDescription = (w) => {
+    switch (w.toLowerCase()) {
+      case "clear": return "Clear skies";
+      case "rain":  return "Rainy";
+      case "fog":   return "Foggy";
+      case "snow":  return "Snowy";
+      case "dust":  return "Dusty";
+      default:      return w;
+    }
+  };
 
-    // Reverse-geocode
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-    );
-    const data = await res.json();
-    const displayName = data.display_name || "Unknown location";
+  const buildAdditionalComments = () => {
+    const instr = instrumentNote.trim();
+    const quick = selectedPhrases.map((p) => p.replace(/\.+$/, "")).join(". ");
+    const note  = notes.trim().replace(/\.+$/, "");
+    const ai    = aiComments.trim().replace(/\.+$/, "");
+    const weatherStr = weather ? weatherDescription(weather) : "";
+    const windInfo = windIntensity === "no wind"
+      ? "No wind"
+      : windIntensity && windDir
+      ? `${capitalize(windIntensity)} wind from ${windDir}`
+      : "";
 
-    // AI prompt
-    const prompt = `
-You are generating short, clear field location descriptions based on GPS data.
+    const lines = [
+      instr,
+      [quick, note, weatherStr, ai].filter(Boolean).join(". "),
+      [windInfo, windRelative].filter(Boolean).join(". "),
+    ].filter(Boolean);
 
-Using the address below, return a short phrase describing the location (e.g. named place, address number, corner).
+    return lines.join("\n");
+  };
 
-Address:
-"${displayName}"
-    `.trim();
+  useEffect(() => {
+    setAdditionalComments(buildAdditionalComments());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instrumentNote, selectedPhrases, aiComments, notes, weather, windIntensity, windDir, windRelative]);
 
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_OPENAI_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-
-    const aiReply =
-      aiRes.ok && (await aiRes.json()).choices?.[0]?.message?.content?.trim();
-    const cleaned = aiReply?.replace(/^["']|["']$/g, "");
-
-    setLocationDesc((prev) =>
-      cleaned
-        ? prev
-          ? `${prev}. ${cleaned}`
-          : cleaned
-        : prev
-    );
-  } catch (error) {
-    setGeoStatus("");
-    setLocationDesc("Unable to get location: " + error.message);
-  }
-};
-
-  // === SECTION 10: Helpers – Reset & Misc Utility ===========================
+  // === SECTION 20: Reset & Clipboard Helpers ==============================
   const clearLocationFields = () => {
     setDistanceTotal(0);
     setDirectionFromLandmark("");
@@ -1055,14 +788,12 @@ Address:
     setLandmark1("");
     setLandmark2("");
     setLocationDesc("");
-    setPositionReport("");            // ← clear “Report My Position”
-    setNearestLandmarkReport("");     // ← clear “Auto describe → nearest landmark”
+    setPositionReport("");
+    setNearestLandmarkReport("");
   };
-
   const clearCommentsFields = () => {
     setSceneImage(null);
-    const fileInput = document.querySelector('input[type="file"]');
-    if (fileInput) fileInput.value = "";
+    document.querySelectorAll('input[type="file"]').forEach((i) => (i.value = ""));
     setWindDir("");
     setWindIntensity("");
     setWeather("");
@@ -1073,217 +804,43 @@ Address:
     setWindRelative("");
     setInstrumentNote("");
   };
+  const copyToClipboard = (txt) => navigator.clipboard.writeText(txt);
 
-  const copyToClipboard = (text) => navigator.clipboard.writeText(text);
-
-    /* --- Guide-builder helpers --------------------------------------- */
-  const addSectionHeading = () => {
-    if (!newSectionHeading.trim()) return;
-    setBuilderItems((items) => [
-      ...items,
-      { type: "section", heading: newSectionHeading.trim() },
-    ]);
-    setNewSectionHeading("");
-    setBuilderAddMode("");
-  };
-
-  const addEntryItem = () => {
-    if (!newEntryFieldName.trim() || !newEntryFieldValue.trim()) return;
-    setBuilderItems((items) => [
-      ...items,
-      {
-        type: "entry",
-        fieldName: newEntryFieldName.trim(),
-        fieldValue: newEntryFieldValue.trim(),
-        comment: newEntryComment.trim(),
-      },
-    ]);
-    setNewEntryFieldName("");
-    setNewEntryFieldValue("");
-    setNewEntryComment("");
-    setBuilderAddMode("");
-  };
-  
-  const addImageItem = async () => {
-  if (!newImageFile) return;
-  const url = await uploadImage(newImageFile);
-  if (!url) return;          // upload failed
-  setBuilderItems((items) => [
-    ...items,
-    { type: "image", src: url, caption: newImageCaption.trim() },
-  ]);
-  // reset temp fields
-  setNewImageFile(null);
-  setNewImageCaption("");
-  setBuilderAddMode("");
-};
-
-
-  const moveBuilderItem = (index, dir) => {
-    setBuilderItems((items) => {
-      const newIdx = dir === "up" ? index - 1 : index + 1;
-      if (newIdx < 0 || newIdx >= items.length) return items;
-      const copy = [...items];
-      const [moved] = copy.splice(index, 1);
-      copy.splice(newIdx, 0, moved);
-      return copy;
-    });
-  };
-
-    // Remove an item by index
-    const removeBuilderItem = (index) =>
-      setBuilderItems((items) => items.filter((_, i) => i !== index));
-
-
-  const buildLocationDescription = () => {
-    if (!locationType || !directionFromLandmark) return locationDesc || "";
-    let base = "";
-    switch (locationType) {
-      case "corner":
-        base =
-          cornerDirection && landmark1
-            ? `~${distanceTotal} feet ${directionFromLandmark} of ${cornerDirection} corner of ${landmark1}`
-            : "";
-        break;
-      case "edge":
-        base =
-          edgeDirection && landmark1
-            ? `~${distanceTotal} feet ${directionFromLandmark} of ${edgeDirection} edge of ${landmark1}`
-            : "";
-        break;
-      case "intersection":
-        base =
-          landmark1 && landmark2
-            ? `~${distanceTotal} feet ${directionFromLandmark} of intersection of ${landmark1} and ${landmark2}`
-            : "";
-        break;
-      case "landmark":
-      case "image":
-        base = landmark1
-          ? `~${distanceTotal} feet ${directionFromLandmark} of ${landmark1}`
-          : "";
-        break;
-      default:
-        base = "";
-    }
-    return locationDesc ? `${base}. ${locationDesc}` : base;
-  };
-
-// === SECTION 11: Helpers – Weather & Additional-Comments Builder ==========
-
-// Utility: capitalize first letter
-
-
-
-// === PATCH ▸ SECTION 11: Helpers – Weather & Additional-Comments Builder ==========
-//
-// Utility: capitalize first letter
-const capitalize = (text) =>
-  text.length ? text.charAt(0).toUpperCase() + text.slice(1) : "";
-
-// Utility: expand weather keywords → friendly wording
-const weatherDescription = (value) => {
-  switch (value.toLowerCase()) {
-    case "clear": return "Clear skies";
-    case "rain":  return "Rainy";
-    case "fog":   return "Foggy";
-    case "snow":  return "Snowy";
-    case "dust":  return "Dusty";
-    default:       return value;
+  // === SECTION 21: UI Render =============================================
+  if (!user) {
+    return (
+      <div className="container" style={{ textAlign: "center", marginTop: 50 }}>
+        <h2>Please sign in with Google to continue</h2>
+        <button onClick={handleSignIn} style={{ padding: "8px 16px", fontSize: 16 }}>
+          Sign in with Google
+        </button>
+      </div>
+    );
   }
-};
 
-/**
- * buildAdditionalComments()
- * -------------------------------------------------------------------------
- * 1–2. Instrument note (Batch number: … / Exp date: …)
- * 3.   Quick phrases · weather · AI image text · Manual notes (one line)
- * 4.   Wind intensity & direction · Wind-relative      (same line)
- *
- * Segments are joined by newlines; within-line items by periods.
- */
-const buildAdditionalComments = () => {
-  // Line 1–2: instrument note block
-  const instrumentLines = instrumentNote ? instrumentNote.trim() : "";
-
-  // Components for mid-line: quick phrases, weather, AI comments, manual notes
-  const quickStr   = selectedPhrases
-    .map((p) => p.trim().replace(/\.+$/, ""))
-    .join(". ");
-  const weatherStr = weather ? weatherDescription(weather) : "";
-  const aiStr      = aiComments ? aiComments.trim().replace(/\.+$/, "") : "";
-  const noteStr    = notes      ? notes.trim().replace(/\.+$/, "")      : "";
-  const midLine    = [quickStr, noteStr, weatherStr, aiStr]
-    .filter(Boolean)
-    .join(". ");
-
-  // Components for wind info
-  let windInfo = "";
-  if (windIntensity === "no wind") {
-    windInfo = "No wind";
-  } else if (windIntensity && windDir) {
-    windInfo = `${capitalize(windIntensity)} wind from ${windDir}`;
-  }
-  const windLine = [windInfo, windRelative]
-    .filter(Boolean)
-    .join(". ");
-
-  // Combine midLine and windLine into one continuous line separated by period
-  const restLine = [midLine, windLine]
-    .filter(Boolean)
-    .join(". ");
-
-  // Assemble final output: if instrumentLines exists, place on top with newline,
-  // otherwise return restLine directly
-  return instrumentLines
-    ? [instrumentLines, restLine].join("\n")
-    : restLine;
-};
-
-// Keep the existing effect to sync additionalComments → state
-useEffect(() => {
-  setAdditionalComments(buildAdditionalComments());
-}, [
-  instrumentNote,
-  selectedPhrases,
-  aiComments,
-  notes,
-  weather,
-  windIntensity,
-  windDir,
-  windRelative
-]);
-
-// === SECTION 12: RENDER ===================================================
-
-// If not signed in, show login screen
-if (!user) {
-  return (
-    <div className="container" style={{ textAlign: "center", marginTop: 50 }}>
-      <h2>Please sign in with Google to continue</h2>
-      <button onClick={handleSignIn} style={{ padding: "8px 16px", fontSize: 16 }}>
-        Sign in with Google
-      </button>
-    </div>
+  /* --- Mapbox Landmark Picker modal ------------------------------------- */
+  const landmarkPicker = isPickingLandmark && (
+    <MapboxLandmarkPicker
+      onSelect={({ lat, lon }) => {
+        setIsPickingLandmark(false);
+        setNewLandmarkCoords(`${lat}, ${lon}`);
+      }}
+      onClose={() => setIsPickingLandmark(false)}
+    />
   );
-}
 
 return (
   <>
-    {/* === Mapbox Landmark Picker Modal === */}
-    {isPickingLandmark && (
-      <MapboxLandmarkPicker
-        onSelect={handleLandmarkSelect}
-        onClose={() => setIsPickingLandmark(false)}
-      />
-    )}      {/* ===== SECTION 12A: Main Container ===== */}
-      <div className="container">
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-          <button onClick={() => setActiveScreen("main")}>Main</button>
-          <button onClick={() => setActiveScreen("guide")}>Guide</button>
-          <button onClick={() => setActiveScreen("settings")}>Settings</button>
-          <button onClick={handleSignOut}>Sign Out</button>
-        </div>
+    {landmarkPicker}  {/* Mapbox modal is injected via constant */}
+
+    {/* ===== SECTION 12A: Main Container ===== */}
+    <div className="container">
+      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <button onClick={() => setActiveScreen("main")}>Main</button>
+        <button onClick={() => setActiveScreen("guide")}>Guide</button>
+        <button onClick={() => setActiveScreen("settings")}>Settings</button>
+        <button onClick={handleSignOut}>Sign Out</button>
+      </div>
         {activeScreen === "main" && (
           <>
             <h1>MDS Assist</h1>
@@ -1672,12 +1229,12 @@ return (
                 className="input"
               />
               {sceneImage && (
-                <button onClick={handleSubmit}>Analyze Photo with AI</button>
+                <button onClick={handleSceneAnalyze}>Analyze Photo with AI</button>
               )}
             </div>
 
 
-        {/* ===== SECTION 12C: Final Data, Copy Buttons etc (Main only) ===== */}
+        {/* ===== SECTION 12C: Final Data, Copy Buttons etc (Main only) ===== */}
         {activeScreen === "main" && (
           <>
             <textarea
@@ -2826,7 +2383,7 @@ return (
 
 
       </div>
-      {/* ===== END container (SECTION 12) ===== */}
+      {/* ===== END container (SECTION 12) ===== */}
     </>
   ); // end return
 } // end App()
