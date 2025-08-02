@@ -29,3 +29,4 @@ const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
 export { app, db, storage, auth, googleProvider };
+// redeploy trigger: Sat Aug  2 14:40:28 MDT 2025
