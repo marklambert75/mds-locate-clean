@@ -124,8 +124,11 @@ Generate a short, clear field location descriptions based on GPS data.
 Examples of good responses:
 "2023 S Crystal Way"
 "N corner of Green Ivy sports field"
-"Intersection of Smith and Murphy Street"
+"intersection of Smith and Murphy Street"
 "~100 ft W of Intersection of Danube St and Garbanzo Way"
+
+Always be concise and extremely factual. Return your answer with no line breaks or quotation marks.
+
 The information must be factual. It is better to be non-specific and say "NW corner of field" than
 to make up the name of the field. Never punt a response. If you have no data to return, simply respond
 with "-".
@@ -755,6 +758,9 @@ Ignore background scenery. Do NOT infer weather or wind. Examples of good phrase
 "Excavator and skidsteer excavating a berm."
 "Puddles of water have an oily sheen."
 "River with algae. Wildlife present, including heron and turtle."
+
+Always be concise and extremely factual. Return your answer with no line breaks or quotation marks. 
+
 `
         },
         { type: "image_url", image_url: { url: sceneImage } },
@@ -783,7 +789,25 @@ Ignore background scenery. Do NOT infer weather or wind. Examples of good phrase
       content: [
         {
           type: "text",
-          text: `Identify the object and any ID visible, e.g. “Utility pole 79557B”.`
+          text: `You are provided with a photo showing a single landmark such as a structure, utility pole, sign, or gate marker.
+
+Your task is to:
+- Identify the type of object (e.g., utility pole, gate marker, sign)
+- Include any visible ID or label on it if it is clearly legible
+- Return a single short phrase. 
+- If your phrase begins with a standard word (not a cardinal direction or proper noun) use a lower case letter.
+
+Examples:
+- "utility pole 79557B"
+- "sign: No Trespassing"
+- "gate marker 3A"
+- house with a red roof
+- white corrugated iron storage shed
+
+Do not describe background surroundings or speculate. 
+Only report what is clearly visible on the object itself.
+
+`
         },
         { type: "image_url", image_url: { url: landmarkImage } },
       ],
@@ -848,26 +872,39 @@ Ignore background scenery. Do NOT infer weather or wind. Examples of good phrase
     }
   };
 
-  const buildAdditionalComments = () => {
-    const instr = instrumentNote.trim();
-    const quick = selectedPhrases.map((p) => p.replace(/\.+$/, "")).join(". ");
-    const note  = notes.trim().replace(/\.+$/, "");
-    const ai    = aiComments.trim().replace(/\.+$/, "");
-    const weatherStr = weather ? weatherDescription(weather) : "";
-    const windInfo = windIntensity === "no wind"
-      ? "No wind"
-      : windIntensity && windDir
-      ? `${capitalize(windIntensity)} wind from ${windDir}`
-      : "";
+// === SECTION 19B: Build Additional Comments ======================================= 
 
-    const lines = [
-      instr,
-      [quick, note, weatherStr, ai].filter(Boolean).join(". "),
-      [windInfo, windRelative].filter(Boolean).join(". "),
-    ].filter(Boolean);
+const buildAdditionalComments = () => {
+  // Instrument note (if any) on its own line
+  const instr = instrumentNote.trim();
 
-    return lines.join("\n");
-  };
+  // Quick phrases, manual notes, weather description, AI comments
+  const quick      = selectedPhrases.map(p => p.trim().replace(/\.+$/, "")).join(". ");
+  const note       = notes.trim().replace(/\.+$/, "");
+  const weatherStr = weather ? weatherDescription(weather) : "";
+  const aiText     = aiComments.trim().replace(/\.+$/, "");
+
+  // Base description line
+  const baseLine = [quick, note, weatherStr, aiText].filter(Boolean).join(". ");
+
+  // Wind info line
+  let windInfo = "";
+  if (windIntensity === "no wind") {
+    windInfo = "No wind";
+  } else if (windIntensity && windDir) {
+    windInfo = `${capitalize(windIntensity)} wind from ${windDir}`;
+  }
+  const windLine = [windInfo, windRelative].filter(Boolean).join(". ");
+
+  // Now assemble final output:
+  // If there’s an instrument note, keep it first, then in the second line join baseLine + windLine with a period.
+  if (instr) {
+    return `${instr}\n${[baseLine, windLine].filter(Boolean).join(". ")}`;
+  }
+
+  // Otherwise, return a single line with baseLine + windLine
+  return [baseLine, windLine].filter(Boolean).join(". ");
+};
 
   useEffect(() => {
     setAdditionalComments(buildAdditionalComments());
@@ -1284,12 +1321,15 @@ return (
         {activeScreen === "main" && (
           <>
 
-          {/* Instrument note buttons */}
-          <div style={{ display: "flex", gap: 8, margin: "8px 0" }}>
-            <button onClick={() => setInstrumentNote(makeInstrumentNote("UR"))}>UR</button>
-            <button onClick={() => setInstrumentNote(makeInstrumentNote("Gtc"))}>Gastec</button>
-          </div>
-
+        {/* Instrument note buttons */}
+        <div style={{ display: "flex", gap: 8, margin: "8px 0" }}>
+          <button onClick={() => setInstrumentNote(makeInstrumentNote("UR"))}>
+            UR
+          </button>
+          <button onClick={() => setInstrumentNote(makeInstrumentNote("Gastec"))}>
+            Gastec
+          </button>
+        </div>
 
 
         {/* ===== SECTION 22B: Phrase Quick-Add ===== */}
@@ -1458,14 +1498,7 @@ return (
               Final Data for MDS
             </div>
 
-            <div style={{ marginBottom: 10 }}>
-              <button onClick={handleAttachToLocation} style={{ marginRight: 10 }}>
-                Attach Fields to Location
-              </button>
-              <button onClick={handleRetrieveFromLocation}>
-                Retrieve Fields at Location
-              </button>
-            </div>
+
 
             <div style={{ marginTop: 10 }}>
               
@@ -2039,53 +2072,6 @@ return (
               </button>
             </div>
 
-{/* ==== SECTION: GPS Accuracy Wait ==== */}
-<div
-  className="section-header"
-  style={{
-    background: "#333",
-    color: "#fff",
-    padding: "8px 12px",
-    margin: "16px 0",
-  }}
->
-  GPS Accuracy Wait
-</div>
-
-{/* Slider + label */}
-<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-  <label style={{ fontWeight: "bold" }}>
-    Wait up to {gpsWaitSec} s for high-accuracy fix
-  </label>
-  <input
-    type="range"
-    min="5"
-    max="20"
-    step="5"
-    value={gpsWaitSec}
-    onChange={(e) => setGpsWaitSec(Number(e.target.value))}
-    style={{ width: "100%", maxWidth: 400 }}
-  />
-</div>
-
-{/* Save button, below the slider */}
-<div style={{ marginTop: 16 }}>
-  <button
-    onClick={saveGpsWaitSec}
-    style={{
-      background: "#3182ce",
-      color: "#fff",
-      border: "none",
-      padding: "8px 16px",
-      borderRadius: 4,
-      cursor: "pointer",
-    }}
-  >
-    Save GPS Wait
-  </button>
-</div>
-
-
             {/* ==== SECTION: Landmarks List & Editor ==== */}
             <div
               className="section-header"
@@ -2255,20 +2241,25 @@ return (
               {instruments.map((ins) => (
                
             <div key={ins.id} className="instrument-card">
-              {/* --- Row 1: Abbr + Barcode ----------------------------------- */}
-              <div className="instr-row">
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  value={editInstruments[ins.id]?.abbr ?? ins.abbr}
-                  onChange={(e) =>
-                    setEditInstruments((p) => ({
-                      ...p,
-                      [ins.id]: { ...p[ins.id], abbr: e.target.value },
-                    }))
-                  }
-                />
-                <input
+                {/* Row 1: Abbr + Barcode */}
+                <div className="instr-row">
+                  <select
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={editInstruments[ins.id]?.abbr ?? ins.abbr}
+                    onChange={(e) =>
+                      setEditInstruments((p) => ({
+                        ...p,
+                        [ins.id]: { ...p[ins.id], abbr: e.target.value },
+                      }))
+                    }
+                  >
+                    <option value="">Select abbreviation</option>
+                    {["UR","MR","AR","Gastec","Horiba","Minican","Other"].map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                      <input
                   className="input"
                   style={{ flex: 2 }}
                   value={editInstruments[ins.id]?.barcode ?? ins.barcode}
@@ -2342,15 +2333,18 @@ return (
 
             <div className="instrument-card">
               {/* Row 1: abbreviation + barcode */}
-              <div className="instr-row">
-                <input
+            <div className="instr-row">
+                <select
                   className="input"
                   style={{ flex: 1 }}
-                  placeholder="Abbr (UR, MR, AR, Gtc)"
                   value={newInstrAbbr}
                   onChange={(e) => setNewInstrAbbr(e.target.value)}
-                />
-                <input
+                >
+                  <option value="">Select abbreviation</option>
+                  {["UR","MR","AR","Gastec","Horiba","Minican","Other"].map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>                <input
                   className="input"
                   style={{ flex: 2 }}
                   placeholder="Barcode"
@@ -2476,6 +2470,51 @@ return (
         )}
 
 
+{/* ==== SECTION: GPS Accuracy Wait ==== */}
+<div
+  className="section-header"
+  style={{
+    background: "#333",
+    color: "#fff",
+    padding: "8px 12px",
+    margin: "16px 0",
+  }}
+>
+  GPS Accuracy Wait
+</div>
+
+{/* Slider + label */}
+<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+  <label style={{ fontWeight: "bold" }}>
+    Wait up to {gpsWaitSec} s for high-accuracy fix
+  </label>
+  <input
+    type="range"
+    min="5"
+    max="20"
+    step="5"
+    value={gpsWaitSec}
+    onChange={(e) => setGpsWaitSec(Number(e.target.value))}
+    style={{ width: "100%", maxWidth: 400 }}
+  />
+</div>
+
+{/* Save button, below the slider */}
+<div style={{ marginTop: 16 }}>
+  <button
+    onClick={saveGpsWaitSec}
+    style={{
+      background: "#3182ce",
+      color: "#fff",
+      border: "none",
+      padding: "8px 16px",
+      borderRadius: 4,
+      cursor: "pointer",
+    }}
+  >
+    Save GPS Wait
+  </button>
+</div>
 
 
 
