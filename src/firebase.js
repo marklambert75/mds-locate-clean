@@ -5,28 +5,24 @@ import { getStorage } from "firebase/storage";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyAOtuUurAXqo8S7eYKNKCJ4W1BTGlI5Lmk",
+  authDomain: "mds-assist-329ca.firebaseapp.com",
+  projectId: "mds-assist-329ca",
+  storageBucket: "mds-assist-329ca.appspot.com",
+  messagingSenderId: "48455603372",
+  appId: "1:48455603372:web:3b6e43373e859bc804fb09",
 };
-
 
 const app = initializeApp(firebaseConfig);
 
 // Firestore database
-const db = getFirestore(app);
+export const db = getFirestore(app);
 
 // Firebase Storage
-const storage = getStorage(app);
+export const storage = getStorage(app);
 
 // Firebase Authentication
-const auth = getAuth(app);
+export const auth = getAuth(app);
 
 // Google Sign-In provider
-const googleProvider = new GoogleAuthProvider();
-
-export { app, db, storage, auth, googleProvider };
-// redeploy trigger: Sat Aug  2 14:40:28 MDT 2025
+export const googleProvider = new GoogleAuthProvider();
