@@ -131,3 +131,47 @@ button:hover {
   font-style: italic;
   color: #666;
 }
+
+.btn-main {
+  background: #333;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  font-size: 1rem;
+  border-radius: 4px;
+}
+.btn-main.active { background: #555; }
+
+.btn-sub {
+  background: #bbb;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.88rem;
+  border-radius: 4px;
+}
+.btn-sub.active { background: #999; }
+
+/* ── Action Buttons (Clear, Copy, Save, etc.) ───────────────────────── */
+.btn-action {
+  background: #ff8800;    /* orange */
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Compact Input Labels for Instruments ───────────────────────────── */
+.input-label {
+  font-size: 0.75rem;
+  margin-bottom: 2px;
+  color: #333;
+  display: block;
+}
+/* ───────────────────────────────────────────────────────────────────── */

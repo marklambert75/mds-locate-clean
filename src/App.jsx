@@ -1077,22 +1077,14 @@ return (
   ].map(({ label, value }) => (
     <button
       key={value}
+      className={`btn-main ${locMethod === value ? "active" : ""}`}
       onClick={() => {
         setLocMethod(value);
-        // reset conflicting state on tab switch
         setDistanceTotal(0);
         setDirectionFromLandmark("");
         setLocationType("");
       }}
-        style={{
-        backgroundColor: locMethod === value ? "#555" : "#999",
-        color: "#fff",
-        border: "none",
-        padding: "6px 12px",
-        borderRadius: "4px",
-        cursor: "pointer",
-        }}    
->
+    >
       {label}
     </button>
   ))}
@@ -1112,36 +1104,22 @@ return (
 >
   {/* Manual mode */}
   <button
-    onClick={() => setBuildMode("manual")}
-    style={{
-      backgroundColor: buildMode === "manual" ? "#555" : "#999",
-      color: "#fff",
-      border: "none",
-      padding: "6px 12px",
-      borderRadius: "4px",
-      cursor: "pointer",
-    }}
-  >
-    Manual
-  </button>
+  className={`btn-sub ${buildMode === "manual" ? "active" : ""}`}
+  onClick={() => setBuildMode("manual")}
+>
+  Manual
+</button>
 
   {/* Map mode (opens the picker) */}
-  <button
-    onClick={() => {
-      setBuildMode("map");
-      setIsPickingLandmark(true);
-    }}
-    style={{
-      backgroundColor: buildMode === "map" ? "#555" : "#999",
-      color: "#fff",
-      border: "none",
-      padding: "6px 12px",
-      borderRadius: "4px",
-      cursor: "pointer",
-    }}
-  >
-    Map
-  </button>
+<button
+  className={`btn-sub ${buildMode === "map" ? "active" : ""}`}
+  onClick={() => {
+    setBuildMode("map");
+    setIsPickingLandmark(true);
+  }}
+>
+  Map
+</button>
 
   {/* GPS‐lock timer */}
   {gpsTimer > 0 && (
@@ -1379,7 +1357,8 @@ return (
   className="input"
   style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
 />
-<button onClick={clearLocationFields}>Clear Location Fields</button>
+<button className="btn-action"
+onClick={clearLocationFields}>Clear Location Fields</button>
 
             {/* Build Additional Comments */}
             <div
@@ -1560,7 +1539,8 @@ return (
               style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
             />
 
-            <button onClick={clearCommentsFields}>Clear Comment Fields</button>
+            <button className="btn-action" 
+            onClick={clearCommentsFields}>Clear Comment Fields</button>
 
             <div
               className="section-header"
@@ -1595,7 +1575,7 @@ return (
               className="input"
               style={{ background: "#f8f8f8", color: "#222" }}
             />
-            <button
+            <button className="btn-action"
               onClick={() =>
                 copyToClipboard(
                   [
@@ -1622,7 +1602,8 @@ return (
                 className="input"
                 style={{ background: "#f8f8f8", color: "#222" }}
               />
-              <button onClick={() => copyToClipboard(additionalComments)}>
+              <button className="btn-action" 
+              onClick={() => copyToClipboard(additionalComments)}>
                 Copy
               </button>
             </div>
@@ -1641,27 +1622,27 @@ return (
 
             {/* Top‑bar mode buttons */}
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <button
+              className={`btn-main ${guideMode === "view" ? "active" : ""}`}
+              onClick={() => setGuideMode("view")}
+            >
+              View Guide
+            </button>
               <button
-                onClick={() => setGuideMode("view")}
-                style={{ backgroundColor: guideMode === "view" ? "#ccc" : "" }}
-              >
-                View Guide
-              </button>
-              <button
+                className={`btn-main ${guideMode === "view" ? "active" : ""}`}
                 onClick={() => setGuideMode("create")}
-                style={{ backgroundColor: guideMode === "create" ? "#ccc" : "" }}
               >
                 Create Guide
               </button>
               <button
+                className={`btn-main ${guideMode === "view" ? "active" : ""}`}
                 onClick={() => setGuideMode("edit")}
-                style={{ backgroundColor: guideMode === "edit" ? "#ccc" : "" }}
               >
                 Edit Guide
               </button>
               <button
+                className={`btn-main ${guideMode === "view" ? "active" : ""}`}
                 onClick={() => setGuideMode("delete")}
-                style={{ backgroundColor: guideMode === "delete" ? "#ccc" : "" }}
               >
                 Delete Guide
               </button>
@@ -1734,7 +1715,8 @@ return (
                         <strong>{item.fieldName}</strong>: {item.fieldValue}
                         {item.comment && ` — ${item.comment}`}
                       </span>
-                      <button onClick={() => copyToClipboard(item.fieldValue)}>
+                      <button className="btn-action"
+                      onClick={() => copyToClipboard(item.fieldValue)}>
                         Copy
                       </button>
                     </div>
@@ -2144,7 +2126,8 @@ return (
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <button onClick={handleSaveIncidentCoords}>
+              <button className="btn-action" 
+              onClick={handleSaveIncidentCoords}>
                 Save Incident Site
               </button>
             </div>
@@ -2233,231 +2216,310 @@ return (
   </div>
 ))}
 
-              <hr className="landmark-divider" />
-              {/* — Add new landmark — */}
-              
-<div
-  className="landmark-add-row"
-  style={{ display: "flex", flexDirection: "column", gap: 8 }}
->
-  {/* Header for the add form */}
-  <div style={{ fontWeight: "bold", fontSize: "1.1em" }}>
-    Add Landmark
-  </div>
+<hr className="landmark-divider" />
 
-  {/* Description field */}
+{/* — Add new landmark — */}
+<hr className="landmark-divider" />
+
+<div className="landmark-add-row" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+  <div style={{ fontWeight: "bold", fontSize: "1.1em" }}>Add Landmark</div>
+
+  {/* Description */}
   <input
-    type="text"
     className="input"
     placeholder="Description"
     value={newLandmarkDesc}
     onChange={(e) => setNewLandmarkDesc(e.target.value)}
   />
 
-  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-    {/* Map picker */}
-{/* — Pick on map button — */}
-<button onClick={() => setIsPickingLandmark(true)}>
-  Pick on Map
-</button>
-
-{/* — Show picked coords as soon as they arrive — */}
-{newLandmarkCoords && (
-  <input
-    type="text"
-    className="input"
-    readOnly
-    value={newLandmarkCoords}
-    style={{ marginTop: 8 }}
-  />
-)}
-
-    {/* Add button (only enabled when you have both fields) */}
+  {/* Mode buttons */}
+  <div style={{ display: "flex", gap: 8, margin: "4px 0" }}>
     <button
       onClick={() => {
-        const [latStr = "", lonStr = ""] = newLandmarkCoords.split(",");
-        addLandmark(
-          newLandmarkDesc,
-          parseFloat(latStr.trim()),
-          parseFloat(lonStr.trim())
-        );
-        setNewLandmarkDesc("");
-        setNewLandmarkCoords("");
+        setIsPickingLandmark(true);
         setManualEntryMode(false);
+        setNewLandmarkCoords("");
       }}
-      disabled={!newLandmarkDesc.trim() || !newLandmarkCoords.trim()}
+      style={{
+        backgroundColor: !manualEntryMode ? "#555" : "#999",
+        color: "#fff",
+        border: "none",
+        padding: "6px 12px",
+        borderRadius: 4,
+        cursor: "pointer",
+      }}
     >
-      Add
+      Pick on Map
+    </button>
+
+    <button
+      onClick={() => {
+        setManualEntryMode(true);
+        setIsPickingLandmark(false);
+        setNewLandmarkCoords("");
+      }}
+      style={{
+        backgroundColor: manualEntryMode ? "#555" : "#999",
+        color: "#fff",
+        border: "none",
+        padding: "6px 12px",
+        borderRadius: 4,
+        cursor: "pointer",
+      }}
+    >
+      Manual Entry
     </button>
   </div>
+
+  {/* --- Coordinates field — editable if Manual, read-only if Map --- */}
+  {manualEntryMode ? (
+    <input
+      className="input"
+      placeholder="lat, lon (e.g. 43.5844, -116.1940)"
+      value={newLandmarkCoords}
+      onChange={(e) =>
+        setNewLandmarkCoords(
+          e.target.value.replace(/[^\d.\- ,]/g, "") // strip parens and other chars
+        )
+      }
+    />
+  ) : (
+    newLandmarkCoords && (
+      <input
+        className="input"
+        value={newLandmarkCoords}
+        readOnly
+        style={{ opacity: 0.7 }}
+      />
+    )
+  )}
+
+  {/* --- Add button --- */}
+  <button className="btn-action"
+    onClick={() => {
+      const [latStr = "", lonStr = ""] = newLandmarkCoords.split(",");
+      addLandmark(
+        newLandmarkDesc.trim(),
+        parseFloat(latStr),
+        parseFloat(lonStr)
+      );
+      setNewLandmarkDesc("");
+      setNewLandmarkCoords("");
+      setManualEntryMode(false);
+    }}
+    disabled={
+      !newLandmarkDesc.trim() ||
+      !/^[-\d.]+\s*,\s*[-\d.]+$/.test(newLandmarkCoords.trim())
+    }
+  >
+    Add
+  </button>
 </div>
-            </div>
+</div>
             {/* ==== end Landmarks Section ==== */}
 
-            {/* ==== SECTION: Instruments ==== */}
-            <div
-              className="section-header"
-              style={{
-                background: "#333",
-                color: "#fff",
-                padding: "8px 12px",
-                margin: "16px 0",
-              }}
-            >
-              Instruments
-            </div>
+{/* ==== SECTION: Instruments ==== */}
+<div
+  className="section-header"
+  style={{
+    background: "#333",
+    color: "#fff",
+    padding: "8px 12px",
+    margin: "16px 0",
+  }}
+>
+  Instruments
+</div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* — Existing instruments — */}
-              {instruments.map((ins) => (
-               
-            <div key={ins.id} className="instrument-card">
-                {/* Row 1: Abbr + Barcode */}
-                <div className="instr-row">
-                  <select
-                    className="input"
-                    style={{ flex: 1 }}
-                    value={editInstruments[ins.id]?.abbr ?? ins.abbr}
-                    onChange={(e) =>
-                      setEditInstruments((p) => ({
-                        ...p,
-                        [ins.id]: { ...p[ins.id], abbr: e.target.value },
-                      }))
-                    }
-                  >
-                    <option value="">Select abbreviation</option>
-                    {["UR","MR","AR","Gastec","Horiba","Minican","Other"].map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                      <input
-                  className="input"
-                  style={{ flex: 2 }}
-                  value={editInstruments[ins.id]?.barcode ?? ins.barcode}
-                  onChange={(e) =>
-                    setEditInstruments((p) => ({
-                      ...p,
-                      [ins.id]: { ...p[ins.id], barcode: e.target.value },
-                    }))
-                  }
-                />
-              </div>
+<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+  {/* — Existing instruments — */}
+  {instruments.map((ins) => (
+    <div key={ins.id} className="instrument-card" style={{ border: "1px solid #ddd", padding: 8, borderRadius: 4 }}>
+      {/* Row 1 — Abbr + Barcode */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <label className="input-label">Abbr</label>
+          <select
+            className="input"
+            value={editInstruments[ins.id]?.abbr ?? ins.abbr}
+            onChange={(e) =>
+              setEditInstruments((p) => ({
+                ...p,
+                [ins.id]: { ...p[ins.id], abbr: e.target.value },
+              }))
+            }
+          >
+            <option value="">Select abbreviation</option>
+            {["UR","MR","AR","Gastec","Horiba","Minican","Other"].map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
 
-              {/* --- Row 2: Batch/QC + Exp date ------------------------------ */}
-              <div className="instr-row">
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  placeholder="Batch / QC"
-                  value={editInstruments[ins.id]?.batch ?? ins.batch}
-                  onChange={(e) =>
-                    setEditInstruments((p) => ({
-                      ...p,
-                      [ins.id]: { ...p[ins.id], batch: e.target.value },
-                    }))
-                  }
-                />
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  placeholder="Exp date"
-                  value={editInstruments[ins.id]?.exp ?? ins.exp}
-                  onChange={(e) =>
-                    setEditInstruments((p) => ({
-                      ...p,
-                      [ins.id]: { ...p[ins.id], exp: e.target.value },
-                    }))
-                  }
-                />
-              </div>
+        <div style={{ flex: 2, display: "flex", flexDirection: "column" }}>
+          <label className="input-label">Barcode</label>
+          <input
+            className="input"
+            value={editInstruments[ins.id]?.barcode ?? ins.barcode}
+            onChange={(e) =>
+              setEditInstruments((p) => ({
+                ...p,
+                [ins.id]: { ...p[ins.id], barcode: e.target.value },
+              }))
+            }
+          />
+        </div>
+      </div>
 
-              {/* --- Row 3: Action buttons ----------------------------------- */}
-              <div className="instr-row actions">
-                <button onClick={() => copyInstrumentBarcode(ins.barcode)}>Copy</button>
-                <button
-                  onClick={() => {
-                    const buf = editInstruments[ins.id] || {};
-                    updateInstrument(
-                      ins.id,
-                      buf.abbr ?? ins.abbr,
-                      buf.barcode ?? ins.barcode,
-                      buf.batch ?? ins.batch,
-                      buf.exp ?? ins.exp
-                    );
-                  }}
-                  style={{ background: "#3182ce", color: "#fff" }}
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => deleteInstrument(ins.id)}
-                  style={{ background: "#e53e3e", color: "#fff" }}
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-                          ))}
+      {/* Row 2 — Batch / Exp */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <label className="input-label">Batch&nbsp;/&nbsp;QC</label>
+          <input
+            className="input"
+            placeholder="Batch / QC"
+            value={editInstruments[ins.id]?.batch ?? ins.batch}
+            onChange={(e) =>
+              setEditInstruments((p) => ({
+                ...p,
+                [ins.id]: { ...p[ins.id], batch: e.target.value },
+              }))
+            }
+          />
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <label className="input-label">Exp</label>
+          <input
+            className="input"
+            placeholder="Exp date"
+            value={editInstruments[ins.id]?.exp ?? ins.exp}
+            onChange={(e) =>
+              setEditInstruments((p) => ({
+                ...p,
+                [ins.id]: { ...p[ins.id], exp: e.target.value },
+              }))
+            }
+          />
+        </div>
+      </div>
 
-            {/* — Add new instrument — */}
-            <hr className="landmark-divider" />
+      {/* Row 3 — Action buttons */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          className="btn-action"
+          onClick={() => copyInstrumentBarcode(ins.barcode)}
+        >
+          Copy
+        </button>
+        <button
+          className="btn-action"
+          onClick={() => {
+            const buf = editInstruments[ins.id] || {};
+            updateInstrument(
+              ins.id,
+              buf.abbr ?? ins.abbr,
+              buf.barcode ?? ins.barcode,
+              buf.batch ?? ins.batch,
+              buf.exp ?? ins.exp
+            );
+          }}
+        >
+          Save
+        </button>
+        <button
+          onClick={() => deleteInstrument(ins.id)}
+          style={{
+            background: "#e53e3e",
+            color: "#fff",
+            border: "none",
+            borderRadius: "50%",
+            width: 32,
+            height: 32,
+            padding: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            fontSize: "1.2rem",
+            lineHeight: 1,
+          }}
+          title="Delete instrument"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  ))}
 
-            <div className="instrument-card">
-              {/* Row 1: abbreviation + barcode */}
-            <div className="instr-row">
-                <select
-                  className="input"
-                  style={{ flex: 1 }}
-                  value={newInstrAbbr}
-                  onChange={(e) => setNewInstrAbbr(e.target.value)}
-                >
-                  <option value="">Select abbreviation</option>
-                  {["UR","MR","AR","Gastec","Horiba","Minican","Other"].map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>                <input
-                  className="input"
-                  style={{ flex: 2 }}
-                  placeholder="Barcode"
-                  value={newInstrBarcode}
-                  onChange={(e) => setNewInstrBarcode(e.target.value)}
-                />
-              </div>
+  {/* — Add new instrument — */}
+  <hr className="landmark-divider" />
 
-              {/* Row 2: batch/QC + exp date */}
-              <div className="instr-row">
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  placeholder="Batch / QC"
-                  value={newInstrBatch}
-                  onChange={(e) => setNewInstrBatch(e.target.value)}
-                />
-                <input
-                  className="input"
-                  style={{ flex: 1 }}
-                  placeholder="Exp date"
-                  value={newInstrExp}
-                  onChange={(e) => setNewInstrExp(e.target.value)}
-                />
-              </div>
+  <div className="instrument-card" style={{ border: "1px solid #ddd", padding: 8, borderRadius: 4 }}>
+    {/* Row 1 — Abbr + Barcode */}
+    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <label className="input-label">Abbr</label>
+        <select
+          className="input"
+          value={newInstrAbbr}
+          onChange={(e) => setNewInstrAbbr(e.target.value)}
+        >
+          <option value="">Select abbreviation</option>
+          {["UR","MR","AR","Gastec","Horiba","Minican","Other"].map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ flex: 2, display: "flex", flexDirection: "column" }}>
+        <label className="input-label">Barcode</label>
+        <input
+          className="input"
+          placeholder="Barcode"
+          value={newInstrBarcode}
+          onChange={(e) => setNewInstrBarcode(e.target.value)}
+        />
+      </div>
+    </div>
 
-              {/* Row 3: Add button */}
-              <div className="instr-row actions">
-                <button
-                  onClick={() => {
-                    addInstrument(newInstrAbbr, newInstrBarcode, newInstrBatch, newInstrExp);
-                    setNewInstrAbbr("");
-                    setNewInstrBarcode("");
-                    setNewInstrBatch("");
-                    setNewInstrExp("");
-                  }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-            </div>
+    {/* Row 2 — Batch / Exp */}
+    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <label className="input-label">Batch&nbsp;/&nbsp;QC</label>
+        <input
+          className="input"
+          placeholder="Batch / QC"
+          value={newInstrBatch}
+          onChange={(e) => setNewInstrBatch(e.target.value)}
+        />
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <label className="input-label">Exp</label>
+        <input
+          className="input"
+          placeholder="Exp date"
+          value={newInstrExp}
+          onChange={(e) => setNewInstrExp(e.target.value)}
+        />
+      </div>
+    </div>
+
+    {/* Row 3 — Add button */}
+    <div style={{ display: "flex" }}>
+      <button
+        className="btn-action"
+        onClick={() => {
+          addInstrument(newInstrAbbr, newInstrBarcode, newInstrBatch, newInstrExp);
+          setNewInstrAbbr("");
+          setNewInstrBarcode("");
+          setNewInstrBatch("");
+          setNewInstrExp("");
+        }}
+      >
+        Add
+      </button>
+    </div>
+  </div>
+</div>
 
 
 
@@ -2476,18 +2538,20 @@ return (
 
             {/* --- Mode toggle --- */}
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <button
-                onClick={() => setPhraseMode("add")}
-                style={{ backgroundColor: phraseMode === "add" ? "#ddd" : "#f0f0f0" }}
-              >
-                Add Phrase
-              </button>
-              <button
-                onClick={() => setPhraseMode("delete")}
-                style={{ backgroundColor: phraseMode === "delete" ? "#ddd" : "#f0f0f0" }}
-              >
-                Delete Phrase
-              </button>
+            <button
+              className={`btn-main ${phraseMode === "add" ? "active" : ""}`}
+              onClick={() => setPhraseMode("add")}
+            >
+              Add Phrase
+            </button>              
+            
+            <button
+              className={`btn-main ${phraseMode === "delete" ? "active" : ""}`}
+              onClick={() => setPhraseMode("delete")}
+            >
+              Delete Phrase
+            </button>
+
             </div>
 
             {/* --- Add form --- */}
@@ -2572,17 +2636,8 @@ return (
 
 {/* Save button, below the slider */}
 <div style={{ marginTop: 16 }}>
-  <button
-    onClick={saveGpsWaitSec}
-    style={{
-      background: "#3182ce",
-      color: "#fff",
-      border: "none",
-      padding: "8px 16px",
-      borderRadius: 4,
-      cursor: "pointer",
-    }}
-  >
+  <button className="btn-action"
+    onClick={saveGpsWaitSec}  >
     Save GPS Wait
   </button>
 </div>
