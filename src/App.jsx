@@ -5,7 +5,7 @@
 // ==========================================================================
 import { useState, useEffect } from "react";
 
-// === SECTION 01: Imports & Firebase Setup =================================
+// === SECTION 01: Imports & Firebase Setup =================================
 import {
   collection,
   getDocs,
@@ -15,6 +15,9 @@ import {
   doc,
   getDoc,
   setDoc,
+  query,
+  where,
+  or,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
@@ -186,13 +189,23 @@ Address:
   const [geoStatus, setGeoStatus] = useState("");
   const [gpsTimer, setGpsTimer] = useState(0);
   const [gpsWaitSec, setGpsWaitSec] = useState(15);
-  useEffect(() => {
-    const stored = localStorage.getItem("gpsWaitSec");
-    if (stored !== null) setGpsWaitSec(Number(stored));
-  }, []);
-  const saveGpsWaitSec = () => {
-    localStorage.setItem("gpsWaitSec", gpsWaitSec);
-    alert("GPS wait saved.");
+  const saveGpsWaitSec = async () => {
+    if (!user) return alert("You must be signed in to save settings.");
+
+    try {
+      await setDoc(
+        doc(db, "settings", user.uid),
+        {
+          ownerUid: user.uid,
+          gpsWaitSec,
+        },
+        { merge: true }
+      );
+      alert("GPS wait saved.");
+    } catch (err) {
+      console.error("Error saving GPS wait:", err);
+      alert("Failed to save GPS wait.");
+    }
   };
 
   // === SECTION 05: Comment / Weather / AI Image State =====================
@@ -244,13 +257,15 @@ Address:
   const [newInstrBatch, setNewInstrBatch]         = useState("");
   const [newInstrExp, setNewInstrExp]             = useState("");
 
-  // === SECTION 10: Initial Load Effects ====================================
-  useEffect(() => {
-    loadPhrases();
-    loadGuides();
-    loadLandmarks();
-    loadIncidentSite();
-  }, []);
+// === SECTION 10: Initial Load Effects ====================================
+useEffect(() => {
+  if (!user) return; // wait until auth completes
+
+  loadPhrases();
+  loadGuides();
+  loadLandmarks();
+  loadSettings();
+}, [user]);
 
   // === SECTION 10A: Prefill Builder when editing a guide ==================
   useEffect(() => {
@@ -271,100 +286,150 @@ Address:
   /*                          Firestore CRUD blocks                         */
   /* ---------------------------------------------------------------------- */
 
-  // === SECTION 11: CRUD – Phrases =========================================
-  const loadPhrases = async () => {
-    try {
-      const snap = await getDocs(collection(db, "phrases"));
-      setSavedPhrases(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      console.error("Error loading phrases:", err);
-    }
-  };
-
-  const addPhrase = async () => {
-    if (!newPhraseTitle || !newPhraseContent) return;
-    try {
-      await addDoc(collection(db, "phrases"), {
-        title: newPhraseTitle,
-        content: newPhraseContent,
-      });
-      setNewPhraseTitle("");
-      setNewPhraseContent("");
-      loadPhrases();
-    } catch (err) {
-      console.error("Error adding phrase:", err);
-    }
-  };
-
-  const removePhrase = async (index) => {
-    const phraseToDelete = savedPhrases[index];
-    if (!phraseToDelete?.id) return;
-    try {
-      await deleteDoc(doc(db, "phrases", phraseToDelete.id));
-      loadPhrases();
-    } catch (err) {
-      console.error("Error deleting phrase:", err);
-    }
-  };
-
-  const togglePhrase = (content) => {
-    setSelectedPhrases((prev) =>
-      prev.includes(content) ? prev.filter((p) => p !== content) : [...prev, content]
+// === SECTION 11: CRUD – Phrases ==========================================
+const loadPhrases = async () => {
+  if (!user) return;                       // wait for auth to resolve
+  try {
+    const phrasesRef = collection(db, "phrases");
+    const q = query(
+      phrasesRef,
+      or(
+        where("isMaster", "==", true),      // global read-only list
+        where("ownerUid", "==", user.uid)   // personal list
+      )
     );
-  };
+    const snap = await getDocs(q);
+    setSavedPhrases(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  } catch (err) {
+    console.error("Error loading phrases:", err);
+  }
+};
 
-  // === SECTION 12: CRUD – Guides ==========================================
-  const loadGuides = async () => {
-    try {
-      const snap = await getDocs(collection(db, "guides"));
-      setGuides(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      console.error("Error loading guides:", err);
-    }
-  };
+const addPhrase = async () => {
+  if (!newPhraseTitle || !newPhraseContent) return;
+  try {
+    await addDoc(collection(db, "phrases"), {
+      title: newPhraseTitle,
+      content: newPhraseContent,
+      ownerUid: user.uid,                   // mark as owner-only
+    });
+    setNewPhraseTitle("");
+    setNewPhraseContent("");
+    loadPhrases();
+  } catch (err) {
+    console.error("Error adding phrase:", err);
+  }
+};
 
-  const saveGuide = async () => {
-    if (!builderTitle || !builderItems.length) return;
-    try {
-      await addDoc(collection(db, "guides"), {
-        title: builderTitle,
-        items: builderItems,
-        timestamp: Date.now(),
-      });
-      setBuilderTitle("");
-      setBuilderItems([]);
-      loadGuides();
-      alert("Guide saved.");
-    } catch (err) {
-      console.error("Error saving guide:", err);
-    }
-  };
+const removePhrase = async (index) => {
+  const phrase = savedPhrases[index];
+  if (!phrase?.id) return;
 
-  const deleteGuide = async (guideId) => {
-    if (!guideId) return;
-    try {
-      await deleteDoc(doc(db, "guides", guideId));
-      loadGuides();
-      alert("Guide deleted.");
-    } catch (err) {
-      console.error("Error deleting guide:", err);
-    }
-  };
+  // block deleting global master phrases or someone else’s
+  if (phrase.isMaster) {
+    alert("Master phrases can’t be deleted."); return;
+  }
+  if (phrase.ownerUid !== user.uid) {
+    alert("You don’t own this phrase."); return;
+  }
 
-  const updateGuide = async (guideId) => {
-    if (!guideId || !builderTitle.trim() || !builderItems.length) return;
-    try {
-      await updateDoc(doc(db, "guides", guideId), {
-        title: builderTitle.trim(),
-        items: builderItems,
-        timestamp: Date.now(),
-      });
-      loadGuides();
-      alert("Guide updated.");
-    } catch (err) {
-      console.error("Error updating guide:", err);
-    }
-  };
+  try {
+    await deleteDoc(doc(db, "phrases", phrase.id));
+    loadPhrases();
+  } catch (err) {
+    console.error("Error deleting phrase:", err);
+  }
+};
+
+const togglePhrase = (content) => {        // (unchanged)
+  setSelectedPhrases((prev) =>
+    prev.includes(content) ? prev.filter((p) => p !== content) : [...prev, content]
+  );
+};
+
+// === SECTION 12: CRUD – Guides ==========================================
+const loadGuides = async () => {
+  if (!user) return;  // wait for auth
+  try {
+    const guidesRef = collection(db, "guides");
+    const q = query(
+      guidesRef,
+      or(
+        where("isMaster", "==", true),      // global masters
+        where("ownerUid", "==", user.uid)   // personal guides
+      )
+    );
+    const snap = await getDocs(q);
+    setGuides(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  } catch (err) {
+    console.error("Error loading guides:", err);
+  }
+};
+
+const saveGuide = async () => {
+  if (!builderTitle || !builderItems.length) return;
+  try {
+    await addDoc(collection(db, "guides"), {
+      title: builderTitle.trim(),
+      items: builderItems,
+      timestamp: Date.now(),
+      ownerUid: user.uid,    // tag as personal
+      isMaster: false,       // never master by default
+    });
+    setBuilderTitle("");
+    setBuilderItems([]);
+    loadGuides();
+    alert("Guide saved.");
+  } catch (err) {
+    console.error("Error saving guide:", err);
+  }
+};
+
+const deleteGuide = async (guideId) => {
+  if (!guideId) return;
+  // find guide in state
+  const guide = guides.find((g) => g.id === guideId);
+  if (!guide) return;
+  // block master or others' guides
+  if (guide.isMaster) {
+    alert("Master guides can’t be deleted."); return;
+  }
+  if (guide.ownerUid !== user.uid) {
+    alert("You don’t own this guide."); return;
+  }
+  try {
+    await deleteDoc(doc(db, "guides", guideId));
+    loadGuides();
+    alert("Guide deleted.");
+  } catch (err) {
+    console.error("Error deleting guide:", err);
+  }
+};
+
+const updateGuide = async (guideId) => {
+  if (!guideId || !builderTitle.trim() || !builderItems.length) return;
+  // find guide in state
+  const guide = guides.find((g) => g.id === guideId);
+  if (!guide) return;
+  // block master or others' guides
+  if (guide.isMaster) {
+    alert("Master guides can’t be updated."); return;
+  }
+  if (guide.ownerUid !== user.uid) {
+    alert("You don’t own this guide."); return;
+  }
+  try {
+    await updateDoc(doc(db, "guides", guideId), {
+      title: builderTitle.trim(),
+      items: builderItems,
+      timestamp: Date.now(),
+    });
+    loadGuides();
+    alert("Guide updated.");
+  } catch (err) {
+    console.error("Error updating guide:", err);
+  }
+};
 
 // === SECTION 12A: Guide‑builder Helpers (UI-only) ========================
 const addSectionHeading = () => {
@@ -429,88 +494,151 @@ const removeBuilderItem = (index) =>
   setBuilderItems((items) => items.filter((_, i) => i !== index));
 
 
-  // === SECTION 13: CRUD – Landmarks =======================================
-  const loadLandmarks = async () => {
-    try {
-      const snap = await getDocs(collection(db, "landmarks"));
-      setLandmarks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      console.error("Error loading landmarks:", err);
-    }
-  };
+// === SECTION 13: CRUD – Landmarks =======================================
+const loadLandmarks = async () => {
+  if (!user) return;  // wait for auth
+  try {
+    const landmarksRef = collection(db, "landmarks");
+    const q = query(
+      landmarksRef,
+      where("ownerUid", "==", user.uid)   // only this user's landmarks
+    );
+    const snap = await getDocs(q);
+    setLandmarks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  } catch (err) {
+    console.error("Error loading landmarks:", err);
+  }
+};
 
-  const addLandmark = async (description, lat, lon) => {
-    try {
-      await addDoc(collection(db, "landmarks"), { description, lat, lon });
-      loadLandmarks();
-    } catch (err) {
-      console.error("Error adding landmark:", err);
-    }
-  };
+const addLandmark = async (description, lat, lon) => {
+  try {
+    await addDoc(collection(db, "landmarks"), {
+      description,
+      lat,
+      lon,
+      ownerUid: user.uid,   // tag as belonging to this user
+    });
+    loadLandmarks();
+  } catch (err) {
+    console.error("Error adding landmark:", err);
+  }
+};
 
-  const updateLandmark = async (id, description, lat, lon) => {
-    try {
-      await updateDoc(doc(db, "landmarks", id), { description, lat, lon });
-      loadLandmarks();
-    } catch (err) {
-      console.error("Error updating landmark:", err);
-    }
-  };
+const updateLandmark = async (id, description, lat, lon) => {
+  // ensure this user owns the landmark
+  const lm = landmarks.find((l) => l.id === id);
+  if (!lm || lm.ownerUid !== user.uid) {
+    alert("You don’t have permission to update this landmark.");
+    return;
+  }
+  try {
+    await updateDoc(doc(db, "landmarks", id), { description, lat, lon });
+    loadLandmarks();
+  } catch (err) {
+    console.error("Error updating landmark:", err);
+  }
+};
 
-  const deleteLandmark = async (id) => {
-    try {
-      await deleteDoc(doc(db, "landmarks", id));
-      loadLandmarks();
-    } catch (err) {
-      console.error("Error deleting landmark:", err);
-    }
-  };
+const deleteLandmark = async (id) => {
+  // ensure this user owns the landmark
+  const lm = landmarks.find((l) => l.id === id);
+  if (!lm || lm.ownerUid !== user.uid) {
+    alert("You don’t have permission to delete this landmark.");
+    return;
+  }
+  try {
+    await deleteDoc(doc(db, "landmarks", id));
+    loadLandmarks();
+  } catch (err) {
+    console.error("Error deleting landmark:", err);
+  }
+};
 
-  // === SECTION 14: CRUD – Instruments =====================================
-  const loadInstruments = async () => {
-    try {
-      const snap = await getDocs(collection(db, "instruments"));
-      setInstruments(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      console.error("Error loading instruments:", err);
-    }
-  };
-  useEffect(() => { loadInstruments(); }, []);
+// === SECTION 14: CRUD – Instruments =====================================
+const loadInstruments = async () => {
+  if (!user) return;  // wait for auth
+  try {
+    const instrRef = collection(db, "instruments");
+    const q = query(
+      instrRef,
+      where("ownerUid", "==", user.uid)   // only this user’s instruments
+    );
+    const snap = await getDocs(q);
+    setInstruments(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  } catch (err) {
+    console.error("Error loading instruments:", err);
+  }
+};
 
-  const addInstrument = async (abbr, barcode, batch, exp) => {
-    try {
-      await addDoc(collection(db, "instruments"), { abbr, barcode, batch, exp });
-      loadInstruments();
-    } catch (err) {
-      console.error("Error adding instrument:", err);
-    }
-  };
+useEffect(() => { loadInstruments(); }, [user]);
 
-  const updateInstrument = async (id, abbr, barcode, batch, exp) => {
-    try {
-      await updateDoc(doc(db, "instruments", id), { abbr, barcode, batch, exp });
-      loadInstruments();
-    } catch (err) {
-      console.error("Error updating instrument:", err);
-    }
-  };
+const addInstrument = async (abbr, barcode, batch, exp) => {
+  try {
+    await addDoc(collection(db, "instruments"), {
+      abbr,
+      barcode,
+      batch,
+      exp,
+      ownerUid: user.uid,   // tag as belonging to this user
+    });
+    loadInstruments();
+  } catch (err) {
+    console.error("Error adding instrument:", err);
+  }
+};
 
-  const deleteInstrument = async (id) => {
-    try {
-      await deleteDoc(doc(db, "instruments", id));
-      loadInstruments();
-    } catch (err) {
-      console.error("Error deleting instrument:", err);
-    }
-  };
+const updateInstrument = async (id, abbr, barcode, batch, exp) => {
+  // ensure this user owns the instrument
+  const inst = instruments.find((i) => i.id === id);
+  if (!inst || inst.ownerUid !== user.uid) {
+    alert("You don’t have permission to update this instrument.");
+    return;
+  }
+  try {
+    await updateDoc(doc(db, "instruments", id), { abbr, barcode, batch, exp });
+    loadInstruments();
+  } catch (err) {
+    console.error("Error updating instrument:", err);
+  }
+};
 
-  const copyInstrumentBarcode = (code) => navigator.clipboard.writeText(code);
-  const makeInstrumentNote = (abbr) => {
-    const inst = instruments.find((i) => i.abbr === abbr);
-    if (!inst) return "";
-    const label = abbr === "UR" ? "Batch number" : "QC number";
-    return `${label}: ${inst.batch || ""}\nExp date: ${inst.exp || ""}`.trim();
-  };
+const deleteInstrument = async (id) => {
+  // ensure this user owns the instrument
+  const inst = instruments.find((i) => i.id === id);
+  if (!inst || inst.ownerUid !== user.uid) {
+    alert("You don’t have permission to delete this instrument.");
+    return;
+  }
+  try {
+    await deleteDoc(doc(db, "instruments", id));
+    loadInstruments();
+  } catch (err) {
+    console.error("Error deleting instrument:", err);
+  }
+};
+
+// === Section 14B: CRUD – Per-user Settings ======================================
+const loadSettings = async () => {
+  if (!user) return;
+  try {
+    const refSettings = doc(db, "settings", user.uid);
+    const snap = await getDoc(refSettings);
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    if (data.lat != null && data.lon != null) {
+      setIncidentLat(data.lat);
+      setIncidentLon(data.lon);
+      setIncidentCoords(`${data.lat}, ${data.lon}`);
+    }
+    if (data.gpsWaitSec != null) {
+      setGpsWaitSec(data.gpsWaitSec);
+    }
+  } catch (err) {
+    console.error("Error loading settings:", err);
+  }
+};
+
 
   // === SECTION 15: Incident Site Helpers ==================================
   const loadIncidentSite = async () => {
@@ -545,8 +673,20 @@ const removeBuilderItem = (index) =>
     if (isNaN(lat) || isNaN(lon)) {
       return alert("Invalid format. Example: 43.5844120, -116.1939362");
     }
+    if (!user) {
+      return alert("You must be signed in to save settings.");
+    }
+
     try {
-      await setDoc(doc(db, "settings", "incidentSite"), { lat, lon });
+      await setDoc(
+        doc(db, "settings", user.uid),
+        {
+          ownerUid: user.uid,
+          lat,
+          lon,
+        },
+        { merge: true }
+      );
       setIncidentLat(lat);
       setIncidentLon(lon);
       alert("Incident site saved.");
@@ -2074,24 +2214,31 @@ onClick={clearLocationFields}>Clear Location Fields</button>
               </div>
                 </div>
 
-                <button
-                  disabled={!selectedGuideToDeleteId}
-                  onClick={() => {
-                    const guide = guides.find((g) => g.id === selectedGuideToDeleteId);
-                    if (
-                      !guide ||
-                      !window.confirm(`Delete guide “${guide.title}” permanently?`)
-                    )
-                      return;
-                    deleteGuide(selectedGuideToDeleteId);
-                    setSelectedGuideToDeleteId("");
-                    // If you’re viewing the same guide, clear that too
-                    if (selectedGuideId === guide.id) setSelectedGuideId("");
-                  }}
-                  style={{ background: "#d33", color: "#fff" }}
-                >
-                  Delete Selected Guide
-                </button>
+              <button
+                disabled={!selectedGuideToDeleteId}
+                onClick={() => {
+                  const guide = guides.find((g) => g.id === selectedGuideToDeleteId);
+                  if (!guide) return;
+
+                  // BLOCK masters up front
+                  if (guide.isMaster) {
+                    alert("Master guides can’t be deleted.");
+                    return;
+                  }
+
+                  // Only confirm & delete personal guides
+                  if (!window.confirm(`Delete guide “${guide.title}” permanently?`)) {
+                    return;
+                  }
+
+                  deleteGuide(selectedGuideToDeleteId);
+                  setSelectedGuideToDeleteId("");
+                  if (selectedGuideId === guide.id) setSelectedGuideId("");
+                }}
+                style={{ background: "#d33", color: "#fff" }}
+              >
+                Delete Selected Guide
+              </button>
               </>
             )}
           </>
@@ -2569,7 +2716,8 @@ onClick={clearLocationFields}>Clear Location Fields</button>
                   value={newPhraseContent}
                   onChange={(e) => setNewPhraseContent(e.target.value)}
                 />
-                <button onClick={addPhrase}>Save New Phrase</button>
+                <button className="btn-action"
+                onClick={addPhrase}>Save New Phrase</button>
               </div>
             )}
 
