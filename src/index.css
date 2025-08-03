@@ -157,7 +157,7 @@ button:hover {
   background: #ff8800;    /* orange */
   color: #fff;
   border: none;
-  padding: 6px 12px;
+  padding: 12px 12px;
   font-size: 0.9rem;
   border-radius: 4px;
   cursor: pointer;
@@ -175,3 +175,9 @@ button:hover {
   display: block;
 }
 /* ───────────────────────────────────────────────────────────────────── */
+/* allow vertical (and horizontal, if you like) resizing on all textareas */
+textarea {
+  resize: vertical;      /* user can drag to make it taller */
+  overflow: auto;        /* show scrollbar if content still overflows */
+  min-height: 3em;       /* sensible minimum */
+}

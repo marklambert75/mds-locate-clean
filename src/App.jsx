@@ -655,6 +655,11 @@ const makeInstrumentNote = (abbr) => {
   return `${label}: ${inst.batch || ""}\nExp date: ${inst.exp || ""}`.trim();
 };
 
+// === SECTION 14D: Textarea resize Helper ================================
+const autoGrow = (el) => {
+  el.style.height = "auto";
+  el.style.height = el.scrollHeight + "px";
+};
 
   // === SECTION 15: Incident Site Helpers ==================================
   const loadIncidentSite = async () => {
@@ -1512,6 +1517,9 @@ return (
   readOnly
   className="input"
   style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
+  ref={(el) => el && autoGrow(el)}
+  onInput={(e) => autoGrow(e.target)}
+
 />
 <button className="btn-action"
 onClick={clearLocationFields}>Clear Location Fields</button>
@@ -1693,6 +1701,8 @@ onClick={clearLocationFields}>Clear Location Fields</button>
               readOnly
               className="input"
               style={{ background: "#f8f8f8", color: "#222", marginTop: 8 }}
+              ref={(el) => el && autoGrow(el)}
+              onInput={(e) => autoGrow(e.target)}
             />
 
             <button className="btn-action" 
@@ -1730,6 +1740,9 @@ onClick={clearLocationFields}>Clear Location Fields</button>
               readOnly
               className="input"
               style={{ background: "#f8f8f8", color: "#222" }}
+              ref={(el) => el && autoGrow(el)}
+              onInput={(e) => autoGrow(e.target)}
+
             />
             <button className="btn-action"
               onClick={() =>
@@ -1757,6 +1770,8 @@ onClick={clearLocationFields}>Clear Location Fields</button>
                 readOnly
                 className="input"
                 style={{ background: "#f8f8f8", color: "#222" }}
+                ref={(el) => el && autoGrow(el)}
+                onInput={(e) => autoGrow(e.target)}
               />
               <button className="btn-action" 
               onClick={() => copyToClipboard(additionalComments)}>
