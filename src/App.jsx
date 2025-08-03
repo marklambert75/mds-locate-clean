@@ -507,6 +507,7 @@ const loadLandmarks = async () => {
     setLandmarks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   } catch (err) {
     console.error("Error loading landmarks:", err);
+    alert("Failed to load landmarks.");
   }
 };
 
@@ -521,6 +522,7 @@ const addLandmark = async (description, lat, lon) => {
     loadLandmarks();
   } catch (err) {
     console.error("Error adding landmark:", err);
+    alert("Failed to add landmark.");
   }
 };
 
@@ -536,6 +538,7 @@ const updateLandmark = async (id, description, lat, lon) => {
     loadLandmarks();
   } catch (err) {
     console.error("Error updating landmark:", err);
+    alert("Failed to update landmark.");
   }
 };
 
@@ -551,6 +554,7 @@ const deleteLandmark = async (id) => {
     loadLandmarks();
   } catch (err) {
     console.error("Error deleting landmark:", err);
+    alert("Failed to delete landmark.");
   }
 };
 
