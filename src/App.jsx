@@ -104,6 +104,9 @@ function App() {
   }
 };
 
+  // Demo‐modal state here:
+  const [showDemo, setShowDemo] = useState(false);
+
 // === SECTION 02C: Reverse-Geocode & AI Location Helper ===================
 const handleGeoAnalyze = async () => {
   if (!navigator.geolocation) {
@@ -2823,7 +2826,50 @@ onClick={clearLocationFields}>Clear Location Fields</button>
 
 
 
+
+      
+
+  {/* ── Demo Video Button ───────────────────────────────────────────── */}
+ 
+ <div
+    className="section-header"
+    style={{
+      background: "#333",
+      color: "#fff",
+      padding: "8px 12px",
+      margin: "16px 0",
+    }}
+  >
+    Watch Demo
+  </div>
+ 
+ 
+  <div style={{ marginTop: 16 }}>
+    <button onClick={() => setShowDemo(true)}>
+      ▶ Watch Demo
+    </button>
+  </div>
+
+  {showDemo && (
+    <div className="modal-overlay" onClick={() => setShowDemo(false)}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <iframe
+          className="video-iframe"
+          src="https://www.youtube.com/embed/qpa5DFy3n8A"
+          title="MDS Assist Demo"
+          frameBorder="0"
+          allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+        <button className="btn-close" onClick={() => setShowDemo(false)}>
+          ✕ Close
+        </button>
       </div>
+    </div>
+  )}
+
+      </div>
+
       {/* ===== END container  ===== */}
     </>
   ); // end return
