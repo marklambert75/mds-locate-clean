@@ -644,6 +644,18 @@ const loadSettings = async () => {
 };
 
 
+// === SECTION 14C: Instrument‐note Helper ================================
+/**
+ * Given an instrument abbreviation, returns the “Batch/QC number…\nExp date…” string.
+ */
+const makeInstrumentNote = (abbr) => {
+  const inst = instruments.find((i) => i.abbr === abbr);
+  if (!inst) return "";
+  const label = abbr === "UR" ? "Batch number" : "QC number";
+  return `${label}: ${inst.batch || ""}\nExp date: ${inst.exp || ""}`.trim();
+};
+
+
   // === SECTION 15: Incident Site Helpers ==================================
   const loadIncidentSite = async () => {
     try {
