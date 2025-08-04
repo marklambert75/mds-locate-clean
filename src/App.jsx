@@ -390,19 +390,35 @@ const saveGuide = async () => {
   }
 };
 
+// === SECTION 12A: Delete Guide with Admin Override ======================
 const deleteGuide = async (guideId) => {
   if (!guideId) return;
-  // find guide in state
   const guide = guides.find((g) => g.id === guideId);
   if (!guide) return;
-  // block master or others' guides
-  if (guide.isMaster && user.uid !== ADMIN_UID) {
-    alert("Master guides can’t be deleted."); 
-  return;
-  }  
-  if (guide.ownerUid !== user.uid) {
-    alert("You don’t own this guide."); return;
+
+  // Admin bypasses all guards
+  if (user.uid === ADMIN_UID) {
+    try {
+      await deleteDoc(doc(db, "guides", guideId));
+      loadGuides();
+      alert("Guide deleted.");
+    } catch (err) {
+      console.error("Error deleting guide:", err);
+    }
+    return;
   }
+
+  // Non-admins: block master or others' guides
+  if (guide.isMaster) {
+    alert("Master guides can’t be deleted.");
+    return;
+  }
+  if (guide.ownerUid !== user.uid) {
+    alert("You don’t own this guide.");
+    return;
+  }
+
+  // Allowed for owner
   try {
     await deleteDoc(doc(db, "guides", guideId));
     loadGuides();
@@ -412,23 +428,43 @@ const deleteGuide = async (guideId) => {
   }
 };
 
+// === SECTION 12B: Update Guide with Admin Override ======================
 const updateGuide = async (guideId) => {
   if (!guideId || !builderTitle.trim() || !builderItems.length) return;
-  // find guide in state
   const guide = guides.find((g) => g.id === guideId);
   if (!guide) return;
-  // block master or others' guides
-  if (guide.isMaster && user.uid !== ADMIN_UID) {
-  alert("Master guides can’t be updated."); 
-  return;
+
+  // Admin bypasses all guards
+  if (user.uid === ADMIN_UID) {
+    try {
+      await updateDoc(doc(db, "guides", guideId), {
+        title:     builderTitle.trim(),
+        items:     builderItems,
+        timestamp: Date.now(),
+      });
+      loadGuides();
+      alert("Guide updated.");
+    } catch (err) {
+      console.error("Error updating guide:", err);
+    }
+    return;
+  }
+
+  // Non-admins: block master or others' guides
+  if (guide.isMaster) {
+    alert("Master guides can’t be updated.");
+    return;
   }
   if (guide.ownerUid !== user.uid) {
-    alert("You don’t own this guide."); return;
+    alert("You don’t own this guide.");
+    return;
   }
+
+  // Allowed for owner
   try {
     await updateDoc(doc(db, "guides", guideId), {
-      title: builderTitle.trim(),
-      items: builderItems,
+      title:     builderTitle.trim(),
+      items:     builderItems,
       timestamp: Date.now(),
     });
     loadGuides();
@@ -438,7 +474,7 @@ const updateGuide = async (guideId) => {
   }
 };
 
-// === SECTION 12A: Guide‑builder Helpers (UI-only) ========================
+// === SECTION 12C: Guide‑builder Helpers (UI-only) ========================
 const addSectionHeading = () => {
   if (!newSectionHeading.trim()) return;
   setBuilderItems((items) => [
