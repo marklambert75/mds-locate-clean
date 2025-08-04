@@ -39,6 +39,7 @@ function App() {
   const [buildMode, setBuildMode] = useState("manual");     // "manual" | "map"
   const [isPickingLandmark, setIsPickingLandmark] = useState(false);
   const [manualEntryMode, setManualEntryMode] = useState(false);
+  const ADMIN_UID = "ItRlSey7KEYkz3GvnIm36lWZ3qA2";
 
   /* --- Auto‑trigger Landmark / AI actions on tab switch ------------------ */
   useEffect(() => {
@@ -395,9 +396,10 @@ const deleteGuide = async (guideId) => {
   const guide = guides.find((g) => g.id === guideId);
   if (!guide) return;
   // block master or others' guides
-  if (guide.isMaster) {
-    alert("Master guides can’t be deleted."); return;
-  }
+  if (guide.isMaster && user.uid !== ADMIN_UID) {
+    alert("Master guides can’t be deleted."); 
+  return;
+  }  
   if (guide.ownerUid !== user.uid) {
     alert("You don’t own this guide."); return;
   }
@@ -416,8 +418,9 @@ const updateGuide = async (guideId) => {
   const guide = guides.find((g) => g.id === guideId);
   if (!guide) return;
   // block master or others' guides
-  if (guide.isMaster) {
-    alert("Master guides can’t be updated."); return;
+  if (guide.isMaster && user.uid !== ADMIN_UID) {
+  alert("Master guides can’t be updated."); 
+  return;
   }
   if (guide.ownerUid !== user.uid) {
     alert("You don’t own this guide."); return;
