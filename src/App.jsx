@@ -315,6 +315,7 @@ const addPhrase = async () => {
       title: newPhraseTitle,
       content: newPhraseContent,
       ownerUid: user.uid,                   // mark as owner-only
+      isMaster: false,
     });
     setNewPhraseTitle("");
     setNewPhraseContent("");
